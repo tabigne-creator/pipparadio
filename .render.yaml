@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: radio-irc
+    env: docker
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    plan: free
+    envVars:
+      - key: PYTHONUNBUFFERED
+        value: "1"
+      - key: PORT
+        value: "10000"
+    healthCheckPath: /health
+    autoDeploy: true
+    numInstances: 1
