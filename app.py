@@ -10,7 +10,7 @@ print("=== RADIO SERVER AVVIATO ===")
 AUDIO_FILE = "/app/radio.mp3"
 if not os.path.exists(AUDIO_FILE):
     print(f"Creazione {AUDIO_FILE}...")
-    os.system(f'ffmpeg -f lavfi -i "sine=frequency=440:duration=3600" -acodec libmp3lame -b:a 128k {AUDIO_FILE} 2>/dev/null')
+    os.system(f'ffmpeg -f lavfi -i "anullsrc=r=44100:cl=mono" -t 3600 -acodec libmp3lame -b:a 128k {AUDIO_FILE} 2>/dev/null')
     print(f"File creato: {os.path.getsize(AUDIO_FILE)} bytes")
 
 # 2. Crea un handler HTTP che serve lo stream MP3
