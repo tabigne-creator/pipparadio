@@ -29,7 +29,7 @@ print(f"📍 Directory: {os.getcwd()}")
 print(f"📁 Contenuto iniziale: {os.listdir('.')}")
 
 # 👉 USIAMO UN NOME DIVERSO per evitare conflitti con il file 'music' esistente
-MUSIC_STORAGE = "/app/radio_tracks"  # NOME DIVERSO!
+MUSIC_STORAGE = "/app/music"  # NOME DIVERSO!
 SILENT_TRACK = "/app/silent_stream.mp3"
 
 # Se esiste il file problematico 'music', lo ignoriamo
