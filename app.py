@@ -3,91 +3,173 @@ import socketserver
 import threading
 import time
 import os
+import sys
 
 print("=== RADIO SERVER AVVIATO ===")
+print(f"Python: {sys.version}")
+print(f"Directory corrente: {os.getcwd()}")
+print(f"Contenuto iniziale: {os.listdir('.')}")
 
-# 1. Genera un file MP3 di silenzio/tone se non esiste
+# ============================================
+# 1. GESTIONE CARTELLA MUSIC (IN FALLIBILE)
+# ============================================
+MUSIC_FOLDER = "/app/music"
+
+# Se esiste un FILE (non cartella) chiamato 'music', lo rinominiamo
+if os.path.exists("/app/music") and os.path.isfile("/app/music"):
+    new_name = "/app/music_old_file_backup"
+    os.rename("/app/music", new_name)
+    print(f"⚠️  Trovato FILE 'music' -> rinominato in '{new_name}'")
+
+# Crea la cartella music (se non esiste)
+os.makedirs(MUSIC_FOLDER, exist_ok=True)
+print(f"✅ Cartella music garantita: {MUSIC_FOLDER}")
+print(f"   Contenuto music: {os.listdir(MUSIC_FOLDER)}")
+
+# ============================================
+# 2. CREA FILE AUDIO DI DEFAULT (SILENZIO)
+# ============================================
 AUDIO_FILE = "/app/radio.mp3"
-if not os.path.exists(AUDIO_FILE):
-    print(f"Creazione {AUDIO_FILE}...")
-    os.system(f'ffmpeg -f lavfi -i "anullsrc=r=44100:cl=mono" -t 3600 -acodec libmp3lame -b:a 128k {AUDIO_FILE} 2>/dev/null')
-    print(f"File creato: {os.path.getsize(AUDIO_FILE)} bytes")
 
-# 2. Crea un handler HTTP che serve lo stream MP3
+if not os.path.exists(AUDIO_FILE):
+    print(f"🎵 Creazione file audio di default (silenzio)...")
+    # Crea 2 ore di silenzio assoluto
+    cmd = 'ffmpeg -f lavfi -i "anullsrc=r=44100:cl=mono" -t 7200 -acodec libmp3lame -b:a 128k /app/radio.mp3 2>&1'
+    result = os.system(cmd)
+    if result == 0:
+        print(f"✅ File audio creato: {os.path.getsize(AUDIO_FILE)} bytes")
+    else:
+        print(f"⚠️  FFmpeg potrebbe aver avuto problemi (codice: {result})")
+else:
+    print(f"✅ File audio già esistente: {os.path.getsize(AUDIO_FILE)} bytes")
+
+# ============================================
+# 3. HANDLER HTTP PER LA RADIO
+# ============================================
 class RadioHandler(http.server.BaseHTTPRequestHandler):
+    def log_message(self, format, *args):
+        # Riduci il logging per pulire i log
+        pass
+    
     def do_GET(self):
         if self.path == '/radio.mp3' or self.path == '/stream':
-            # Intestazioni per streaming audio
+            # STREAM AUDIO
             self.send_response(200)
             self.send_header('Content-Type', 'audio/mpeg')
             self.send_header('Cache-Control', 'no-cache, no-store')
-            self.send_header('Pragma', 'no-cache')
-            
-            # Leggi il file audio (lo rileggiamo in loop per stream infinito)
-            file_size = os.path.getsize(AUDIO_FILE)
-            self.send_header('Content-Length', str(file_size))
             self.end_headers()
             
-            # Invia il file audio in loop (per stream 24/7)
+            print(f"📡 Streaming audio a {self.client_address[0]}")
+            
+            # Stream infinito del file audio
             while True:
                 try:
                     with open(AUDIO_FILE, 'rb') as f:
-                        self.wfile.write(f.read())
-                except (ConnectionResetError, BrokenPipeError):
-                    break  # Client disconnesso
+                        while True:
+                            chunk = f.read(8192)  # Leggi in blocchi da 8KB
+                            if not chunk:
+                                f.seek(0)  # Torna all'inizio del file
+                                continue
+                            self.wfile.write(chunk)
+                except (ConnectionResetError, BrokenPipeError, OSError):
+                    print(f"🔌 Client disconnesso: {self.client_address[0]}")
+                    break
                     
         elif self.path == '/':
-            # Pagina HTML semplice con player
+            # PAGINA HTML CON PLAYER
             self.send_response(200)
             self.send_header('Content-Type', 'text/html')
             self.end_headers()
+            
             html = """
+            <!DOCTYPE html>
             <html>
-            <head><title>Radio IRC</title></head>
+            <head>
+                <title>📻 Radio IRC</title>
+                <meta charset="utf-8">
+                <style>
+                    body { font-family: Arial, sans-serif; max-width: 600px; margin: 40px auto; padding: 20px; }
+                    .player { background: #f5f5f5; padding: 20px; border-radius: 10px; margin: 20px 0; }
+                    audio { width: 100%; }
+                    .url-box { background: #e9e9e9; padding: 10px; border-radius: 5px; font-family: monospace; }
+                </style>
+            </head>
             <body>
                 <h1>📻 Radio IRC Stream</h1>
-                <audio controls autoplay>
-                    <source src="/radio.mp3" type="audio/mpeg">
-                    Il tuo browser non supporta l'audio.
-                </audio>
-                <p><a href="/radio.mp3">Link diretto stream</a></p>
-                <p>Per IRC bot: https://pipparadio.onrender.com/radio.mp3</p>
+                <p>Il tuo server radio è attivo e funzionante!</p>
+                
+                <div class="player">
+                    <h3>🎵 Player Live</h3>
+                    <audio controls autoplay>
+                        <source src="/radio.mp3" type="audio/mpeg">
+                        Il tuo browser non supporta l'elemento audio.
+                    </audio>
+                </div>
+                
+                <div class="url-box">
+                    <strong>URL Stream per IRC Bot:</strong><br>
+                    https://pipparadio.onrender.com/radio.mp3
+                </div>
+                
+                <p><a href="/radio.mp3" download>📥 Scarica stream</a> | 
+                   <a href="/status">📊 Status JSON</a></p>
             </body>
             </html>
             """
-            self.wfile.write(html.encode())
+            self.wfile.write(html.encode('utf-8'))
             
         elif self.path == '/status':
-            # Endpoint per bot IRC
+            # ENDPOINT STATUS PER BOT IRC
             self.send_response(200)
             self.send_header('Content-Type', 'application/json')
             self.end_headers()
+            
             import json
+            import datetime
+            
             status = {
+                "radio": "pipparadio",
                 "status": "online",
-                "listeners": 1,
-                "song": "Radio IRC Stream",
-                "url": "https://pipparadio.onrender.com/radio.mp3"
+                "url": "https://pipparadio.onrender.com/radio.mp3",
+                "timestamp": datetime.datetime.now().isoformat(),
+                "server_info": {
+                    "python": sys.version.split()[0],
+                    "directory": os.getcwd(),
+                    "files_in_music": len(os.listdir(MUSIC_FOLDER))
+                }
             }
-            self.wfile.write(json.dumps(status).encode())
+            self.wfile.write(json.dumps(status, indent=2).encode('utf-8'))
             
         else:
-            self.send_error(404)
+            self.send_error(404, "Pagina non trovata")
 
-# 3. Avvia il server HTTP su porta 10000 (Render lo mapperà a 80)
+# ============================================
+# 4. AVVIO SERVER HTTP
+# ============================================
 def run_server():
-    port = 10000  # Porta interna, Render la mapperà automaticamente
-    with socketserver.TCPServer(("", port), RadioHandler) as httpd:
-        print(f"Radio server in ascolto su porta {port}")
-        print(f"Stream URL: http://localhost:{port}/radio.mp3")
+    PORT = 10000
+    print(f"🌐 Avvio server HTTP su porta {PORT}...")
+    
+    with socketserver.TCPServer(("", PORT), RadioHandler) as httpd:
+        print(f"✅ Server in ascolto su http://0.0.0.0:{PORT}")
+        print(f"   • Player: http://localhost:{PORT}/")
+        print(f"   • Stream: http://localhost:{PORT}/radio.mp3")
+        print(f"   • Status: http://localhost:{PORT}/status")
+        print("\n" + "="*50)
+        print("📻 LA TUA RADIO È PRONTA PER IRC!")
+        print("="*50 + "\n")
+        
         httpd.serve_forever()
 
-# 4. Avvia server in thread
+# ============================================
+# 5. AVVIO TUTTO
+# ============================================
 server_thread = threading.Thread(target=run_server, daemon=True)
 server_thread.start()
 
-# 5. Mantieni il processo attivo
-print("=== RADIO ATTIVA ===")
-print("In attesa di connessioni...")
-while True:
-    time.sleep(3600)
+# Mantieni il processo attivo
+try:
+    while True:
+        time.sleep(3600)
+except KeyboardInterrupt:
+    print("\n🛑 Server arrestato")
