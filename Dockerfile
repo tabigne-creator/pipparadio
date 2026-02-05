@@ -1,28 +1,20 @@
-FROM ubuntu:22.04
+FROM python:3.9-slim
 
-# Installa pacchetti
-RUN apt-get update && apt-get install -y \
-    icecast2 \
-    ffmpeg \
-    python3 \
-    curl \
-    net-tools \
-    && rm -rf /var/lib/apt/lists/*
+# Installa FFmpeg (solo per creare file audio)
+RUN apt-get update && apt-get install -y ffmpeg && rm -rf /var/lib/apt/lists/*
 
-# Crea utente non-root
-RUN useradd -m -s /bin/bash radio
+# Copia i file
+COPY app.py /app/
+COPY requirements.txt /app/
 
-# Copia file
-COPY icecast.xml /etc/icecast2/
-COPY start.sh /app/
-COPY streamer.py /app/
-
-# Permessi
-RUN chmod +x /app/start.sh && chown -R radio:radio /app
-
-# Cambia utente
-USER radio
+# Cartella di lavoro
 WORKDIR /app
 
-# Avvia
-CMD ["/bin/bash", "/app/start.sh"]
+# Installa dipendenze Python (nessuna in questo caso)
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Esponi la porta che userà l'app
+EXPOSE 10000
+
+# Avvia l'app
+CMD ["python", "app.py"]
