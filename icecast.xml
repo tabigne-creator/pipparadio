@@ -9,7 +9,7 @@
         <admin-password>hackme</admin-password>
     </authentication>
     <listen-socket>
-        <port>8000</port>
+        <port>80</port>
     </listen-socket>
     <hostname>localhost</hostname>
 </icecast>
