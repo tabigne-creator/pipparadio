@@ -18,7 +18,7 @@ print("📻 RADIO IRC SERVER - AVVIO")
 print("=" * 60)
 
 # ============================================================================
-# 1. CONFIGURAZIONE INIZIALE E SETUP SISTEMA
+# 1. CONFIGURAZIONE INIZIALE - IGNORA IL FILE 'music' PROBLEMATICO
 # ============================================================================
 
 # Directory base dell'applicazione
@@ -28,124 +28,197 @@ os.chdir(BASE_DIR)
 print(f"📍 Directory: {os.getcwd()}")
 print(f"📁 Contenuto iniziale: {os.listdir('.')}")
 
-# Crea cartella per musica (gestisce qualsiasi situazione)
-MUSIC_DIR = "/app/music"
+# 👉 USIAMO UN NOME DIVERSO per evitare conflitti con il file 'music' esistente
+MUSIC_STORAGE = "/app/radio_tracks"  # NOME DIVERSO!
+SILENT_TRACK = "/app/silent_stream.mp3"
+
+# Se esiste il file problematico 'music', lo ignoriamo
+if os.path.exists("/app/music") and os.path.isfile("/app/music"):
+    print(f"⚠️  Ignoro file 'music' esistente")
+    print(f"⚠️  Userò invece: {MUSIC_STORAGE}")
+
+# Crea la NOSTRA cartella musicale (nome diverso)
 try:
-    # Se esiste un FILE chiamato 'music', lo rinomina
-    if os.path.exists(MUSIC_DIR) and os.path.isfile(MUSIC_DIR):
-        backup_name = f"{MUSIC_DIR}_backup_{int(time.time())}"
-        os.rename(MUSIC_DIR, backup_name)
-        print(f"⚠️  File 'music' rinominato in: {backup_name}")
-    
-    # Crea la cartella (se non esiste)
-    os.makedirs(MUSIC_DIR, exist_ok=True)
-    print(f"✅ Cartella music: {MUSIC_DIR}")
-    
-except Exception as e:
-    print(f"⚠️  Nota sulla cartella music: {e}")
-
-# File MP3 di default (silenzio)
-DEFAULT_AUDIO = "/app/default_silence.mp3"
+    os.makedirs(MUSIC_STORAGE, exist_ok=True)
+    print(f"✅ Cartella musica creata: {MUSIC_STORAGE}")
+except:
+    print(f"✅ Cartella musica già esistente: {MUSIC_STORAGE}")
 
 # ============================================================================
-# 2. CREAZIONE CONTENUTO AUDIO DI DEFAULT
+# 2. PREPARAZIONE CONTENUTO AUDIO (SILENZIO + MUSICA DI ESEMPIO)
 # ============================================================================
 
-def create_silence_mp3():
-    """Crea un file MP3 di silenzio (60 minuti)"""
-    print("\n🎵 Creazione audio di default...")
+def create_silent_track():
+    """Crea un file MP3 di silenzio per lo streaming"""
+    print("\n🎵 Preparazione audio base...")
     
-    # Usa FFmpeg per creare silenzio MP3
-    # Nota: su Render Free, potremmo avere limiti di tempo per FFmpeg
-    cmd = [
-        'ffmpeg', '-y',
-        '-f', 'lavfi',
-        '-i', 'anullsrc=r=44100:cl=mono',  # Silenzio puro
-        '-t', '600',  # 10 minuti (Render Free potrebbe limitare processi lunghi)
-        '-acodec', 'libmp3lame',
-        '-b:a', '128k',
-        '-ar', '44100',
-        '-ac', '1',  # Mono
-        DEFAULT_AUDIO
-    ]
+    if os.path.exists(SILENT_TRACK):
+        size = os.path.getsize(SILENT_TRACK)
+        print(f"✅ Traccia silenzio esistente: {size:,} bytes")
+        return True
     
+    # Crea 30 minuti di silenzio (Render Free ha limiti)
     try:
         import subprocess
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
         
-        if result.returncode == 0 and os.path.exists(DEFAULT_AUDIO):
-            size = os.path.getsize(DEFAULT_AUDIO)
-            print(f"✅ Audio creato: {size:,} bytes ({size/1024/1024:.1f} MB)")
+        cmd = [
+            'ffmpeg', '-y',
+            '-f', 'lavfi',
+            '-i', 'anullsrc=r=44100:cl=mono',
+            '-t', '1800',  # 30 minuti
+            '-acodec', 'libmp3lame',
+            '-b:a', '128k',
+            SILENT_TRACK
+        ]
+        
+        print(f"   Comando FFmpeg: {' '.join(cmd[:6])}...")
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
+        
+        if result.returncode == 0 and os.path.exists(SILENT_TRACK):
+            size = os.path.getsize(SILENT_TRACK)
+            print(f"✅ Traccia silenzio creata: {size:,} bytes")
             
-            # Duplica il file per avere più contenuto
-            if size < 2 * 1024 * 1024:  # Se meno di 2MB
-                with open(DEFAULT_AUDIO, 'ab') as f:
-                    f.write(open(DEFAULT_AUDIO, 'rb').read())
-                print(f"✅ Audio esteso: {os.path.getsize(DEFAULT_AUDIO):,} bytes")
-        else:
-            print(f"⚠️  FFmpeg potrebbe aver avuto problemi")
-            if result.stderr:
-                print(f"   Errori: {result.stderr[:200]}")
+            # Duplica per avere più contenuto
+            if size < 5 * 1024 * 1024:  # Se meno di 5MB
+                with open(SILENT_TRACK, 'ab') as f:
+                    original = open(SILENT_TRACK, 'rb').read()
+                    for _ in range(3):  # Triplica
+                        f.write(original)
+                
+                new_size = os.path.getsize(SILENT_TRACK)
+                print(f"✅ Traccia estesa: {new_size:,} bytes")
+            return True
             
     except Exception as e:
         print(f"⚠️  Nota FFmpeg: {type(e).__name__}")
+    
+    # Fallback: crea file vuoto
+    try:
+        with open(SILENT_TRACK, 'wb') as f:
+            f.write(b'FAKE_MP3_HEADER' * 1000)
+        print(f"✅ Traccia fallback creata")
+        return True
+    except:
+        return False
 
-# Crea il file audio solo se non esiste
-if not os.path.exists(DEFAULT_AUDIO):
-    create_silence_mp3()
-else:
-    size = os.path.getsize(DEFAULT_AUDIO)
-    print(f"✅ Audio esistente: {size:,} bytes")
+def download_sample_music():
+    """Scarica musica di esempio se la cartella è vuota"""
+    import glob
+    mp3_files = glob.glob(os.path.join(MUSIC_STORAGE, "*.mp3"))
+    
+    if mp3_files:
+        print(f"✅ {len(mp3_files)} file MP3 trovati in {MUSIC_STORAGE}")
+        return True
+    
+    print("🎵 Download musica di esempio...")
+    
+    # Piccoli file audio royalty-free (effetti sonori)
+    samples = [
+        {
+            "name": "chill_beat.mp3",
+            "url": "https://assets.mixkit.co/music/preview/mixkit-chill-hop-01-965.mp3"
+        },
+        {
+            "name": "ambient_pad.mp3",
+            "url": "https://assets.mixkit.co/music/preview/mixkit-ambient-pad-01-969.mp3"
+        }
+    ]
+    
+    downloaded = 0
+    
+    for sample in samples:
+        filepath = os.path.join(MUSIC_STORAGE, sample["name"])
+        
+        if os.path.exists(filepath):
+            continue
+            
+        try:
+            print(f"  📥 Scaricando {sample['name']}...")
+            
+            # Metodo semplice per scaricare
+            import urllib.request
+            import ssl
+            
+            # Crea contesto SSL che ignora certificati (per semplicità)
+            ctx = ssl.create_default_context()
+            ctx.check_hostname = False
+            ctx.verify_mode = ssl.CERT_NONE
+            
+            req = urllib.request.Request(
+                sample["url"],
+                headers={'User-Agent': 'RadioIRC/1.0'}
+            )
+            
+            with urllib.request.urlopen(req, context=ctx, timeout=30) as response:
+                with open(filepath, 'wb') as f:
+                    f.write(response.read())
+            
+            if os.path.exists(filepath) and os.path.getsize(filepath) > 1024:
+                downloaded += 1
+                size_kb = os.path.getsize(filepath) // 1024
+                print(f"  ✅ {sample['name']} ({size_kb}KB)")
+            else:
+                try:
+                    os.remove(filepath)
+                except:
+                    pass
+                    
+        except Exception as e:
+            print(f"  ⚠️  Salto {sample['name']}: {e}")
+            continue
+    
+    if downloaded > 0:
+        print(f"✅ {downloaded} brani di esempio scaricati")
+        return True
+    
+    print("⚠️  Nessun brano scaricato. Userò solo silenzio.")
+    return False
+
+# Esegue preparazione audio
+create_silent_track()
+download_sample_music()
 
 # ============================================================================
-# 3. HANDLER HTTP PRINCIPALE
+# 3. HANDLER HTTP PRINCIPALE - STREAM 24/7
 # ============================================================================
 
-class RadioHTTPHandler(http.server.BaseHTTPRequestHandler):
+class RadioHandler(http.server.BaseHTTPRequestHandler):
     """Gestisce tutte le richieste HTTP per la radio"""
     
-    # Disabilita logging di ogni richiesta (troppo rumoroso)
+    # Disabilita logging standard
     def log_message(self, format, *args):
         pass
     
     def do_GET(self):
         """Gestisce richieste GET"""
         
-        # 📡 ENDPOINT: STREAM AUDIO PRINCIPALE
+        # 📡 STREAM AUDIO PRINCIPALE (per IRC bot)
         if self.path == '/radio.mp3' or self.path == '/stream':
-            self.handle_audio_stream()
+            self.stream_audio()
             
-        # 🏠 ENDPOINT: PAGINA PRINCIPALE CON PLAYER
+        # 🏠 PAGINA PRINCIPALE CON PLAYER
         elif self.path == '/':
-            self.handle_homepage()
+            self.show_homepage()
             
-        # 📊 ENDPOINT: STATO PER BOT IRC (JSON)
+        # 📊 STATO PER BOT IRC (JSON)
         elif self.path == '/status':
-            self.handle_status()
+            self.show_status()
             
-        # 🔧 ENDPOINT: INFORMAZIONI TECNICHE
-        elif self.path == '/info':
-            self.handle_info()
-            
-        # ❓ ENDPOINT: HEALTH CHECK
+        # ❓ HEALTH CHECK
         elif self.path == '/health':
-            self.handle_health()
-            
-        # 📁 ENDPOINT: LISTA FILE MUSICA
-        elif self.path == '/music':
-            self.handle_music_list()
+            self.send_response(200)
+            self.send_header('Content-Type', 'text/plain')
+            self.end_headers()
+            self.wfile.write(b'OK')
             
         else:
-            self.send_error(404, "Endpoint non trovato")
+            self.send_error(404, "Pagina non trovata")
     
-    # ============================================================================
-    # 4. METODI HANDLER SPECIFICI
-    # ============================================================================
-    
-    def handle_audio_stream(self):
+    def stream_audio(self):
         """Streamma audio in loop infinito 24/7"""
+        client_ip = self.client_address[0]
         print(f"📡 [{datetime.datetime.now().strftime('%H:%M:%S')}] "
-              f"Nuovo ascoltatore: {self.client_address[0]}")
+              f"Nuova connessione da {client_ip}")
         
         try:
             # Intestazioni per streaming MP3
@@ -153,391 +226,204 @@ class RadioHTTPHandler(http.server.BaseHTTPRequestHandler):
             self.send_header('Content-Type', 'audio/mpeg')
             self.send_header('Cache-Control', 'no-cache, no-store, must-revalidate')
             self.send_header('Pragma', 'no-cache')
-            self.send_header('Expires', '0')
-            
-            # Importante: NON inviare Content-Length per streaming infinito
             self.end_headers()
             
             bytes_sent = 0
             start_time = time.time()
+            chunk_counter = 0
             
             # 🔄 LOOP INFINITO DI STREAMING
             while True:
-                # PRIMA SCELTA: Musica dalla cartella /music
-                music_files = self.get_music_files()
-                if music_files:
-                    # Streamma un file musicale casuale
-                    import random
-                    song_file = random.choice(music_files)
-                    print(f"   🎶 Playing: {os.path.basename(song_file)}")
-                    
-                    with open(song_file, 'rb') as f:
-                        while True:
-                            chunk = f.read(16384)  # 16KB chunks
-                            if not chunk:
-                                break  # Fine file
-                            
-                            self.wfile.write(chunk)
-                            bytes_sent += len(chunk)
-                            
-                            # Log ogni 5MB
-                            if bytes_sent % (5 * 1024 * 1024) == 0:
-                                elapsed = time.time() - start_time
-                                kbps = (bytes_sent * 8 / 1024) / elapsed if elapsed > 0 else 0
-                                print(f"   📊 Stream: {bytes_sent//(1024*1024)}MB "
-                                      f"({kbps:.0f} kbps)")
+                # 1. CERCA MUSICA REALE
+                import glob
+                music_files = glob.glob(os.path.join(MUSIC_STORAGE, "*.mp3"))
                 
-                # SECONDA SCELTA: Silenzio di default (loop)
+                if music_files:
+                    # Suona musica reale
+                    import random
+                    current_song = random.choice(music_files)
+                    song_name = os.path.basename(current_song)
+                    
+                    # Log solo la prima volta per ogni canzone
+                    if chunk_counter == 0:
+                        print(f"   🎶 [{client_ip}] Riproduco: {song_name}")
+                    
+                    with open(current_song, 'rb') as f:
+                        song_data = f.read()
+                    
+                    # Invia la canzone in loop
+                    while True:
+                        self.wfile.write(song_data)
+                        bytes_sent += len(song_data)
+                        chunk_counter += 1
+                        
+                        # Log ogni 10MB
+                        if bytes_sent % (10 * 1024 * 1024) < 1024:
+                            elapsed = time.time() - start_time
+                            mb_sent = bytes_sent // (1024 * 1024)
+                            print(f"   📊 [{client_ip}] {mb_sent}MB "
+                                  f"({elapsed:.0f}s) - {song_name}")
+                
+                # 2. FALLBACK: SILENZIO
                 else:
-                    # Leggi il file di default in loop
-                    with open(DEFAULT_AUDIO, 'rb') as f:
-                        audio_data = f.read()
+                    # Streamma silenzio
+                    if chunk_counter == 0:
+                        print(f"   🔇 [{client_ip}] Streaming silenzio")
+                    
+                    with open(SILENT_TRACK, 'rb') as f:
+                        silent_data = f.read()
                     
                     while True:
-                        self.wfile.write(audio_data)
-                        bytes_sent += len(audio_data)
+                        self.wfile.write(silent_data)
+                        bytes_sent += len(silent_data)
+                        chunk_counter += 1
                         
                         # Log ogni minuto
                         if int(time.time() - start_time) % 60 == 0:
-                            print(f"   🔊 Silenzio stream: {bytes_sent//(1024*1024)}MB "
-                                  f"({int(time.time() - start_time)//60} min)")
+                            mb_sent = bytes_sent // (1024 * 1024)
+                            elapsed_min = int((time.time() - start_time) // 60)
+                            print(f"   🔊 [{client_ip}] Silenzio: "
+                                  f"{mb_sent}MB in {elapsed_min}min")
                         
-                        # Piccola pausa per non saturare la CPU
                         time.sleep(0.01)
                         
-        except (ConnectionResetError, BrokenPipeError, OSError) as e:
-            # Client disconnesso - normale per streaming
+        except (ConnectionResetError, BrokenPipeError) as e:
+            # Client disconnesso - normale
             elapsed = time.time() - start_time
+            mb_sent = bytes_sent // (1024 * 1024)
             print(f"🔌 [{datetime.datetime.now().strftime('%H:%M:%S')}] "
-                  f"Disconnesso dopo {elapsed:.1f}s: "
-                  f"{bytes_sent//1024}KB inviati")
+                  f"{client_ip} disconnesso dopo {elapsed:.0f}s "
+                  f"({mb_sent}MB inviati)")
         except Exception as e:
-            print(f"⚠️  Errore stream: {type(e).__name__}: {e}")
+            print(f"⚠️  [{datetime.datetime.now().strftime('%H:%M:%S')}] "
+                  f"Errore con {client_ip}: {type(e).__name__}")
     
-    def handle_homepage(self):
-        """Pagina HTML con player integrato"""
+    def show_homepage(self):
+        """Mostra pagina HTML con player"""
         self.send_response(200)
         self.send_header('Content-Type', 'text/html; charset=utf-8')
         self.end_headers()
         
-        music_files = self.get_music_files()
+        import glob
+        music_files = glob.glob(os.path.join(MUSIC_STORAGE, "*.mp3"))
         music_count = len(music_files)
         
         html = f"""<!DOCTYPE html>
-<html lang="it">
+<html>
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>📻 Radio IRC - Stream 24/7</title>
+    <meta charset="utf-8">
     <style>
-        * {{ margin: 0; padding: 0; box-sizing: border-box; }}
-        body {{ 
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            min-height: 100vh;
-            padding: 20px;
-        }}
-        .container {{ 
-            max-width: 800px; 
-            margin: 0 auto;
-            background: rgba(255, 255, 255, 0.1);
-            backdrop-filter: blur(10px);
-            border-radius: 20px;
-            padding: 40px;
-            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
-        }}
-        h1 {{ 
-            font-size: 2.8em; 
-            margin-bottom: 10px;
-            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
-        }}
-        .subtitle {{ 
-            font-size: 1.2em; 
-            opacity: 0.9;
-            margin-bottom: 30px;
-        }}
-        .player-box {{ 
-            background: rgba(255,255,255,0.15);
-            border-radius: 15px;
-            padding: 25px;
-            margin: 25px 0;
-        }}
-        audio {{ 
-            width: 100%; 
-            border-radius: 10px;
-            margin: 15px 0;
-        }}
-        .url-box {{ 
-            background: rgba(0,0,0,0.2);
-            border-radius: 10px;
-            padding: 15px;
-            margin: 20px 0;
-            font-family: 'Courier New', monospace;
-            word-break: break-all;
-        }}
-        .stats {{ 
-            display: flex;
-            gap: 20px;
-            margin-top: 25px;
-            flex-wrap: wrap;
-        }}
-        .stat-card {{
-            background: rgba(255,255,255,0.1);
-            padding: 15px;
-            border-radius: 10px;
-            flex: 1;
-            min-width: 150px;
-        }}
-        .links {{ margin-top: 30px; }}
-        .links a {{
-            color: #a3e4ff;
-            text-decoration: none;
-            margin-right: 20px;
-            padding: 8px 15px;
-            background: rgba(255,255,255,0.1);
-            border-radius: 5px;
-            display: inline-block;
-            transition: all 0.3s;
-        }}
-        .links a:hover {{
-            background: rgba(255,255,255,0.2);
-            transform: translateY(-2px);
-        }}
+        body {{ font-family: Arial, sans-serif; max-width: 600px; margin: 40px auto; padding: 20px; }}
+        .box {{ background: #f0f0f0; padding: 20px; border-radius: 10px; margin: 20px 0; }}
+        audio {{ width: 100%; }}
+        .url {{ background: #e0e0e0; padding: 10px; border-radius: 5px; font-family: monospace; }}
     </style>
 </head>
 <body>
-    <div class="container">
-        <h1>📻 Radio IRC Stream</h1>
-        <p class="subtitle">Stream audio 24/7 per il tuo canale IRC</p>
-        
-        <div class="player-box">
-            <h2>🎵 Player Live</h2>
-            <p>La radio è attiva {music_count} brani disponibili</p>
-            <audio controls autoplay>
-                <source src="/radio.mp3" type="audio/mpeg">
-                Il tuo browser non supporta l'elemento audio.
-            </audio>
-            <p><small>Il player potrebbe avere un ritardo di 10-30 secondi</small></p>
-        </div>
-        
-        <div class="url-box">
-            <strong>🔗 URL Stream per Bot IRC:</strong><br>
-            <code>https://pipparadio.onrender.com/radio.mp3</code>
-        </div>
-        
-        <div class="stats">
-            <div class="stat-card">
-                <h3>📁 File</h3>
-                <p>{music_count} brani in libreria</p>
-            </div>
-            <div class="stat-card">
-                <h3>⏱️ Uptime</h3>
-                <p>24/7 garantito</p>
-            </div>
-            <div class="stat-card">
-                <h3>🔧 Formato</h3>
-                <p>MP3 • 128kbps • 44.1kHz</p>
-            </div>
-        </div>
-        
-        <div class="links">
-            <a href="/radio.mp3" target="_blank">🎧 Link diretto stream</a>
-            <a href="/status" target="_blank">📊 Status JSON</a>
-            <a href="/info" target="_blank">🔧 Informazioni tecniche</a>
-            <a href="/music" target="_blank">📁 Lista musica</a>
-        </div>
+    <h1>📻 Radio IRC Stream</h1>
+    <p>Il tuo server radio è attivo e funzionante!</p>
+    
+    <div class="box">
+        <h2>🎵 Player Live</h2>
+        <p>{music_count} brani disponibili</p>
+        <audio controls autoplay>
+            <source src="/radio.mp3" type="audio/mpeg">
+        </audio>
     </div>
     
-    <script>
-        // Auto-refresh dello stato ogni 30 secondi
-        setInterval(() => {{
-            fetch('/status')
-                .then(r => r.json())
-                .then(data => {{
-                    console.log('Radio status:', data.status);
-                }});
-        }}, 30000);
-        
-        // Monitora errori del player
-        const audio = document.querySelector('audio');
-        audio.addEventListener('error', (e) => {{
-            console.error('Audio error:', audio.error);
-            alert('Problema con lo stream. Ricarica la pagina.');
-        }});
-    </script>
+    <div class="url">
+        <strong>🔗 URL per Bot IRC:</strong><br>
+        https://pipparadio.onrender.com/radio.mp3
+    </div>
+    
+    <div class="box">
+        <h3>📊 Informazioni</h3>
+        <p>• Stream: MP3 128kbps 44.1kHz</p>
+        <p>• Stato: <span id="status">Online</span></p>
+        <p>• <a href="/status" target="_blank">Status JSON</a></p>
+    </div>
 </body>
 </html>"""
         
         self.wfile.write(html.encode('utf-8'))
     
-    def handle_status(self):
+    def show_status(self):
         """Restituisce stato in JSON per bot IRC"""
         self.send_response(200)
         self.send_header('Content-Type', 'application/json')
         self.end_headers()
         
+        import glob
+        music_files = glob.glob(os.path.join(MUSIC_STORAGE, "*.mp3"))
+        
         status = {
             "radio": "pipparadio",
             "status": "online",
-            "stream_url": "https://pipparadio.onrender.com/radio.mp3",
             "timestamp": datetime.datetime.now().isoformat(),
-            "server_time": time.time(),
+            "stream_url": "https://pipparadio.onrender.com/radio.mp3",
             "stats": {
-                "music_files": len(self.get_music_files()),
-                "default_audio_size": os.path.getsize(DEFAULT_AUDIO) if os.path.exists(DEFAULT_AUDIO) else 0,
-                "server_uptime": int(time.time() - server_start_time),
-                "python_version": sys.version.split()[0]
-            },
-            "endpoints": {
-                "home": "/",
-                "stream": "/radio.mp3",
-                "status": "/status",
-                "info": "/info",
-                "health": "/health"
-            },
-            "irc_bot_example": {
-                "command": "!radio",
-                "response": "Ascolta la radio: https://pipparadio.onrender.com/radio.mp3"
+                "tracks_available": len(music_files),
+                "uptime_seconds": int(time.time() - server_start_time),
+                "server_time": datetime.datetime.now().strftime('%H:%M:%S')
             }
         }
         
         self.wfile.write(json.dumps(status, indent=2).encode('utf-8'))
-    
-    def handle_info(self):
-        """Informazioni tecniche dettagliate"""
-        self.send_response(200)
-        self.send_header('Content-Type', 'application/json')
-        self.end_headers()
-        
-        info = {
-            "system": {
-                "platform": sys.platform,
-                "python": sys.version,
-                "cwd": os.getcwd(),
-                "files_in_app": os.listdir('.'),
-                "music_dir_exists": os.path.exists(MUSIC_DIR),
-                "music_dir_content": os.listdir(MUSIC_DIR) if os.path.exists(MUSIC_DIR) else []
-            },
-            "audio": {
-                "default_file": DEFAULT_AUDIO,
-                "default_file_exists": os.path.exists(DEFAULT_AUDIO),
-                "default_file_size": os.path.getsize(DEFAULT_AUDIO) if os.path.exists(DEFAULT_AUDIO) else 0,
-                "music_files_count": len(self.get_music_files()),
-                "music_files_list": [os.path.basename(f) for f in self.get_music_files()]
-            },
-            "network": {
-                "server_port": SERVER_PORT,
-                "server_start_time": datetime.datetime.fromtimestamp(server_start_time).isoformat(),
-                "current_time": datetime.datetime.now().isoformat()
-            }
-        }
-        
-        self.wfile.write(json.dumps(info, indent=2).encode('utf-8'))
-    
-    def handle_health(self):
-        """Endpoint per health check"""
-        self.send_response(200)
-        self.send_header('Content-Type', 'text/plain')
-        self.end_headers()
-        self.wfile.write(b"OK - Radio Server 24/7\n")
-    
-    def handle_music_list(self):
-        """Lista file musicali disponibili"""
-        self.send_response(200)
-        self.send_header('Content-Type', 'application/json')
-        self.end_headers()
-        
-        music_files = self.get_music_files()
-        music_list = []
-        
-        for filepath in music_files:
-            try:
-                size = os.path.getsize(filepath)
-                music_list.append({
-                    "filename": os.path.basename(filepath),
-                    "size_bytes": size,
-                    "size_mb": size / (1024 * 1024),
-                    "path": filepath
-                })
-            except:
-                pass
-        
-        result = {
-            "count": len(music_list),
-            "total_size_mb": sum(item["size_mb"] for item in music_list),
-            "files": music_list
-        }
-        
-        self.wfile.write(json.dumps(result, indent=2).encode('utf-8'))
-    
-    def get_music_files(self):
-        """Restituisce lista file MP3 nella cartella music"""
-        if not os.path.exists(MUSIC_DIR):
-            return []
-        
-        import glob
-        mp3_files = glob.glob(os.path.join(MUSIC_DIR, "*.mp3"))
-        return [f for f in mp3_files if os.path.isfile(f) and os.path.getsize(f) > 1024]
 
 # ============================================================================
-# 5. AVVIO SERVER HTTP
+# 4. AVVIO SERVER HTTP
 # ============================================================================
 
 SERVER_PORT = 10000
 server_start_time = time.time()
 
-def run_http_server():
-    """Avvia il server HTTP principale"""
-    print(f"\n🌐 AVVIO SERVER HTTP su porta {SERVER_PORT}")
-    print(f"   • Local:    http://localhost:{SERVER_PORT}/")
-    print(f"   • Stream:   http://localhost:{SERVER_PORT}/radio.mp3")
-    print(f"   • Status:   http://localhost:{SERVER_PORT}/status")
+def start_server():
+    """Avvia il server HTTP"""
+    print(f"\n🌐 Avvio server su porta {SERVER_PORT}")
+    print(f"   • Local: http://localhost:{SERVER_PORT}/")
+    print(f"   • Stream: http://localhost:{SERVER_PORT}/radio.mp3")
+    print(f"   • Status: http://localhost:{SERVER_PORT}/status")
+    print(f"\n🔗 PER IL BOT IRC:")
+    print(f"   URL: https://pipparadio.onrender.com/radio.mp3")
+    print(f"\n" + "=" * 60)
+    print("📻 LA TUA RADIO È PRONTA!")
+    print("=" * 60 + "\n")
     
     try:
-        with socketserver.TCPServer(("", SERVER_PORT), RadioHTTPHandler) as httpd:
-            print(f"\n✅ SERVER ATTIVO!")
-            print("=" * 60)
-            print("📻 LA TUA RADIO È PRONTA PER IRC!")
-            print("=" * 60)
-            print(f"\n🔗 PER IL TUO BOT IRC:")
-            print(f"   URL stream: https://pipparadio.onrender.com/radio.mp3")
-            print(f"   Status API: https://pipparadio.onrender.com/status")
-            print(f"\n🎵 Per aggiungere musica:")
-            print(f"   1. Carica file MP3 nella cartella /music")
-            print(f"   2. La radio li rileverà automaticamente")
-            print(f"\n🔄 Server in ascolto... (Ctrl+C per fermare)")
-            
+        with socketserver.TCPServer(("", SERVER_PORT), RadioHandler) as httpd:
             httpd.serve_forever()
-            
     except Exception as e:
-        print(f"\n❌ ERRORE SERVER: {type(e).__name__}: {e}")
-        print("Riavvio in 10 secondi...")
+        print(f"❌ Errore server: {e}")
+        print("🔄 Riavvio in 10 secondi...")
         time.sleep(10)
-        run_http_server()  # Riavvio automatico
+        start_server()
 
 # ============================================================================
-# 6. AVVIO APPLICAZIONE
+# 5. AVVIO APPLICAZIONE
 # ============================================================================
 
 if __name__ == "__main__":
+    # Avvia server in thread separato
+    server_thread = threading.Thread(target=start_server, daemon=True)
+    server_thread.start()
+    
+    print(f"\n⏳ Server avviato. Uptime:")
+    
+    # Mantieni processo attivo
     try:
-        # Avvia server in thread separato
-        server_thread = threading.Thread(target=run_http_server, daemon=True)
-        server_thread.start()
-        
-        # Mantieni il processo attivo
-        print(f"\n⏳ Mantengo processo attivo...")
         while True:
-            # Log ogni ora di attività
             uptime = time.time() - server_start_time
-            if uptime % 3600 < 5:  # Ogni ora circa
-                hours = int(uptime // 3600)
-                print(f"🕐 Uptime: {hours} ore ({uptime:.0f} secondi)")
+            hours = int(uptime // 3600)
+            minutes = int((uptime % 3600) // 60)
             
-            time.sleep(60)  # Controlla ogni minuto
+            # Log ogni 5 minuti
+            if minutes % 5 == 0 and uptime % 300 < 10:
+                print(f"   🕐 Uptime: {hours}h {minutes}m ({int(uptime)}s)")
+            
+            time.sleep(30)
             
     except KeyboardInterrupt:
-        print(f"\n🛑 Arresto richiesto dall'utente")
+        print(f"\n🛑 Arresto manuale")
         print(f"⏱️  Uptime totale: {time.time() - server_start_time:.0f} secondi")
         sys.exit(0)
