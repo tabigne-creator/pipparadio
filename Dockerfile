@@ -1,32 +1,28 @@
 FROM ubuntu:22.04
 
-# 1. Installa i pacchetti
+# Installa pacchetti
 RUN apt-get update && apt-get install -y \
     icecast2 \
     ffmpeg \
     python3 \
+    curl \
+    net-tools \
     && rm -rf /var/lib/apt/lists/*
 
-# 2. Crea un utente dedicato 'radio' (Risolve errore "run as root")
+# Crea utente non-root
 RUN useradd -m -s /bin/bash radio
 
-# 3. Crea struttura directory e imposta i permessi
-RUN mkdir -p /music /app && chown -R radio:radio /music /app
-
-# 4. Copia i file di configurazione nell'immagine
-COPY icecast.xml /etc/icecast2/icecast.xml
+# Copia file
+COPY icecast.xml /etc/icecast2/
 COPY start.sh /app/
 COPY streamer.py /app/
 
-# 5. Rendi eseguibile lo script e imposta il proprietario
+# Permessi
 RUN chmod +x /app/start.sh && chown -R radio:radio /app
 
-# 6. Esponi la porta 80
-EXPOSE 80
-
-# 7. Cambia utente (IMPORTANTE: non più root)
+# Cambia utente
 USER radio
 WORKDIR /app
 
-# 8. Comando di avvio
+# Avvia
 CMD ["/bin/bash", "/app/start.sh"]
