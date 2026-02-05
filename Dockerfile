@@ -1,55 +1,28 @@
 FROM python:3.9-slim
 
-# Installa FFmpeg, Icecast e dipendenze di sistema
+# 1. Installa solo l'essenziale
 RUN apt-get update && apt-get install -y \
     ffmpeg \
-    icecast2 \
-    supervisor \
-    wget \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Crea directory per l'app
+# 2. NON installare icecast2 per ora (problemi di permessi su Render)
+# 3. NON usare supervisor (troppo complesso per free tier)
+
 WORKDIR /app
 
-# Prima copia i requirements per cache efficiente
+# 4. Copia requirements e installa
 COPY requirements.txt .
-
-# Installa dipendenze Python
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copia tutti i file dell'app
+# 5. Copia tutto il resto
 COPY . .
 
-# Copia configurazione Icecast
-COPY icecast.xml /etc/icecast2/icecast.xml
+# 6. Crea file audio semplice
+RUN ffmpeg -f lavfi -i anullsrc=r=44100:cl=stereo -t 60 -acodec libmp3lame static/silence.mp3 2>/dev/null || true
 
-# Crea file di silenzio se non esiste
-RUN if [ ! -f static/silence.mp3 ]; then \
-    echo "Creazione file di silenzio..." && \
-    ffmpeg -f lavfi -i anullsrc=r=44100:cl=stereo -t 3600 -q:a 9 -acodec libmp3lame static/silence.mp3 2>/dev/null || \
-    echo "FFmpeg potrebbe non aver funzionato, useremo un file placeholder"; \
-    fi
-
-# Crea directory per log e assicura permessi
-RUN mkdir -p /var/log/icecast2 /var/log/supervisor \
-    && chown -R icecast2:icecast2 /var/log/icecast2 \
-    && chmod 755 start.sh
-
-# Configurazione Supervisor per gestire processi multipli
-COPY supervisord.conf /etc/supervisor/conf.d/supervisord.conf
-
-# Esponi le porte
-# Flask web server
+# 7. Esponi solo la porta di Flask
 EXPOSE 10000
-# Icecast HTTP
-EXPOSE 8000
-# Icecast alternativa
-EXPOSE 80
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
-  CMD curl -f http://localhost:10000/health || exit 1
-
-# Avvia con Supervisor
-CMD ["/usr/bin/supervisord", "-c", "/etc/supervisor/conf.d/supervisord.conf"]
+# 8. Avvio SEMPLICE - solo Flask per test
+CMD ["python", "app.py"]
