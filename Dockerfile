@@ -40,9 +40,12 @@ RUN mkdir -p /var/log/icecast2 /var/log/supervisor \
 COPY supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 
 # Esponi le porte
-EXPOSE 10000  # Flask web server
-EXPOSE 8000   # Icecast HTTP
-EXPOSE 80     # Icecast alternativa
+# Flask web server
+EXPOSE 10000
+# Icecast HTTP
+EXPOSE 8000
+# Icecast alternativa
+EXPOSE 80
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
