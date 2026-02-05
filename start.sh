@@ -1,70 +1,72 @@
 #!/bin/bash
-echo "=== AVVIO RADIO CON SERVER WEB ==="
 
-# 1. Avvia Icecast (in background)
-echo "1. Avvio Icecast..."
+echo "========================================="
+echo "🎵  RADIO IRC - AVVIO SISTEMA"
+echo "========================================="
+
+# Crea directory per log
+mkdir -p /var/log/icecast2
+chown -R icecast2:icecast2 /var/log/icecast2
+
+# Avvia Icecast
+echo "1. 🎧 Avvio Icecast server..."
 icecast2 -c /etc/icecast2/icecast.xml &
 ICECAST_PID=$!
 sleep 5
 
-# 2. Controlla se Icecast è vivo
+# Controlla se Icecast è attivo
 if ps -p $ICECAST_PID > /dev/null; then
-    echo "✅ Icecast attivo (PID: $ICECAST_PID)"
+    echo "   ✅ Icecast attivo (PID: $ICECAST_PID)"
 else
-    echo "❌ Icecast fallito"
+    echo "   ❌ Icecast non avviato"
+    exit 1
 fi
 
-# 3. AVVIA UN SERVER WEB SEMPLICE SU PORTA 8080 (per Render)
-echo "2. Avvio server web beacon su porta 8080..."
-python3 - << 'EOF'
-import http.server
-import socketserver
-import threading
+# Attendi che Icecast sia pronto
+echo "2. ⏳ Attesa preparazione Icecast..."
+sleep 10
 
-class HealthHandler(http.server.SimpleHTTPRequestHandler):
-    def do_GET(self):
-        if self.path == '/health':
-            self.send_response(200)
-            self.send_header('Content-type', 'text/html')
-            self.end_headers()
-            self.wfile.write(b'Radio OK')
-        else:
-            self.send_response(200)
-            self.send_header('Content-type', 'text/html')
-            self.end_headers()
-            html = b"""
-            <html><body>
-            <h1>Radio IRC Stream</h1>
-            <p>Icecast is running.</p>
-            <p>Stream URL: <a href="/radio.mp3">/radio.mp3</a></p>
-            </body></html>
-            """
-            self.wfile.write(html)
+# Avvia Flask web server
+echo "3. 🌐 Avvio server web Flask..."
+python app.py &
+FLASK_PID=$!
+sleep 3
 
-def run_server():
-    port = 8080
-    with socketserver.TCPServer(("", port), HealthHandler) as httpd:
-        print(f"Server beacon in ascolto su porta {port}")
-        httpd.serve_forever()
+if ps -p $FLASK_PID > /dev/null; then
+    echo "   ✅ Flask attivo (PID: $FLASK_PID)"
+    echo "   🔗 Web server: http://localhost:10000"
+else
+    echo "   ⚠️  Flask non avviato correttamente"
+fi
 
-# Avvia server in thread separato
-server_thread = threading.Thread(target=run_server, daemon=True)
-server_thread.start()
-print("Server web beacon attivo")
-EOF &
-SERVER_PID=$!
-
-# 4. Aspetta un secondo per il server
+# Avvia streamer audio
+echo "4. 🔊 Avvio streamer audio..."
+python streamer.py &
+STREAMER_PID=$!
 sleep 2
 
-# 5. Controlla se il server web è attivo
-if ps -p $SERVER_PID > /dev/null; then
-    echo "✅ Server web beacon attivo (Render dovrebbe rilevare la porta 8080)"
+if ps -p $STREAMER_PID > /dev/null; then
+    echo "   ✅ Streamer attivo (PID: $STREAMER_PID)"
 else
-    echo "⚠️  Server web non partito"
+    echo "   ⚠️  Streamer non avviato"
 fi
 
-# 6. FINALMENTE avvia lo streamer
-echo "3. Avvio streamer audio..."
-cd /app
-exec python3 streamer.py
+echo ""
+echo "========================================="
+echo "🚀 SISTEMA AVVIATO CON SUCCESSO!"
+echo "========================================="
+echo ""
+echo "📊 SERVIZI ATTIVI:"
+echo "   • Icecast:    http://localhost:8000"
+echo "   • Web UI:     http://localhost:10000"
+echo "   • Stream:     http://localhost:10000/radio.mp3"
+echo "   • API Status: http://localhost:10000/status"
+echo ""
+echo "📝 LOG:"
+echo "   tail -f /var/log/supervisor/*.log"
+echo ""
+echo "🛑 Per fermare: Ctrl+C"
+echo "========================================="
+
+# Mantieni il container attivo
+wait
