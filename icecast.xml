@@ -11,5 +11,8 @@
     <listen-socket>
         <port>80</port>
     </listen-socket>
-    <hostname>localhost</hostname>
+    <!-- Le seguenti 3 righe vanno DENTRO il tag <icecast>, prima della chiusura -->
+    <hostname>pipparadio.onrender.com</hostname>
+    <location>Italy</location>
+    <admin>admin@radio.irc</admin>
 </icecast>
