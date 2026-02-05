@@ -12,6 +12,6 @@ RUN chmod +x /start.sh
 
 RUN mkdir -p /music
 
-EXPOSE 8000
+EXPOSE 80
 
 CMD ["/start.sh"]
