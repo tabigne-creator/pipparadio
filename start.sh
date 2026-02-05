@@ -1,46 +1,70 @@
 #!/bin/bash
-echo "=== DEBUG AVVIO RADIO ==="
-echo "1. Controllo utente corrente..."
-whoami
-id
+echo "=== AVVIO RADIO CON SERVER WEB ==="
 
-echo "2. Controllo se Icecast è già in esecuzione..."
-netstat -tlnp 2>/dev/null | grep :80 || echo "Nessun servizio sulla porta 80"
-
-echo "3. Controllo file di configurazione Icecast..."
-ls -la /etc/icecast2/icecast.xml
-echo "Contenuto prime 10 righe:"
-head -10 /etc/icecast2/icecast.xml
-
-echo "4. Provo ad avviare Icecast in modalità DEBUG..."
-icecast2 -c /etc/icecast2/icecast.xml -b -v &
+# 1. Avvia Icecast (in background)
+echo "1. Avvio Icecast..."
+icecast2 -c /etc/icecast2/icecast.xml &
 ICECAST_PID=$!
-sleep 3
+sleep 5
 
-echo "5. Controllo se Icecast è vivo..."
+# 2. Controlla se Icecast è vivo
 if ps -p $ICECAST_PID > /dev/null; then
-    echo "✅ Icecast è in esecuzione (PID: $ICECAST_PID)"
-    echo "Controllo porta 80..."
-    curl -s -o /dev/null -w "Codice HTTP: %{http_code}\n" http://localhost:80/ || echo "Curl fallito"
+    echo "✅ Icecast attivo (PID: $ICECAST_PID)"
 else
-    echo "❌ Icecast NON è in esecuzione"
-    echo "Ultimi errori Icecast (se presenti):"
-    journalctl -u icecast2 --no-pager -n 20 2>/dev/null || echo "Journal non disponibile"
+    echo "❌ Icecast fallito"
 fi
 
-echo "6. Avvio streamer Python..."
-echo "Directory corrente per Python: $(pwd)"
-ls -la
-python3 --version
+# 3. AVVIA UN SERVER WEB SEMPLICE SU PORTA 8080 (per Render)
+echo "2. Avvio server web beacon su porta 8080..."
+python3 - << 'EOF'
+import http.server
+import socketserver
+import threading
 
-# Avvia streamer.py dal percorso corretto
-if [ -f "/app/streamer.py" ]; then
-    echo "Trovato /app/streamer.py"
-    cd /app
-    exec python3 streamer.py
+class HealthHandler(http.server.SimpleHTTPRequestHandler):
+    def do_GET(self):
+        if self.path == '/health':
+            self.send_response(200)
+            self.send_header('Content-type', 'text/html')
+            self.end_headers()
+            self.wfile.write(b'Radio OK')
+        else:
+            self.send_response(200)
+            self.send_header('Content-type', 'text/html')
+            self.end_headers()
+            html = b"""
+            <html><body>
+            <h1>Radio IRC Stream</h1>
+            <p>Icecast is running.</p>
+            <p>Stream URL: <a href="/radio.mp3">/radio.mp3</a></p>
+            </body></html>
+            """
+            self.wfile.write(html)
+
+def run_server():
+    port = 8080
+    with socketserver.TCPServer(("", port), HealthHandler) as httpd:
+        print(f"Server beacon in ascolto su porta {port}")
+        httpd.serve_forever()
+
+# Avvia server in thread separato
+server_thread = threading.Thread(target=run_server, daemon=True)
+server_thread.start()
+print("Server web beacon attivo")
+EOF &
+SERVER_PID=$!
+
+# 4. Aspetta un secondo per il server
+sleep 2
+
+# 5. Controlla se il server web è attivo
+if ps -p $SERVER_PID > /dev/null; then
+    echo "✅ Server web beacon attivo (Render dovrebbe rilevare la porta 8080)"
 else
-    echo "ERRORE: /app/streamer.py non trovato!"
-    echo "Cercando streamer.py in altre location..."
-    find / -name "streamer.py" 2>/dev/null
-    sleep 3600  # Mantiene il container attivo per debugging
+    echo "⚠️  Server web non partito"
 fi
+
+# 6. FINALMENTE avvia lo streamer
+echo "3. Avvio streamer audio..."
+cd /app
+exec python3 streamer.py
