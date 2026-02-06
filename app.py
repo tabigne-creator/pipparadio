@@ -1,24 +1,18 @@
 #!/usr/bin/env python3
 """
-Server web per Radio IRC
-- Pagina web con player audio
-- API status per il bot IRC
-- Health check per Render
+Server web per Radio IRC con streaming diretto
 """
 
-from flask import Flask, jsonify, render_template_string, redirect
+from flask import Flask, jsonify, render_template_string, Response
 import time
 import os
 import socket
-import subprocess
 
 app = Flask(__name__)
 
 # Configurazione
 RADIO_NAME = "Radio IRC"
-STREAM_URL = "/radio.mp3"  # Reindirizza a Icecast
-ICE_HOST = "localhost"
-ICE_PORT = "8000"
+SITE_URL = "https://pipparadio-1.onrender.com"
 
 # Template HTML
 HTML_TEMPLATE = '''<!DOCTYPE html>
@@ -171,7 +165,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         <div class="player-container">
             <h2>🎧 Ascolta in diretta</h2>
             <audio controls autoplay loop>
-                <source src="{{ stream_url }}" type="audio/mpeg">
+                <source src="/radio.mp3" type="audio/mpeg">
                 Il tuo browser non supporta l'elemento audio.
             </audio>
             <p style="margin-top: 15px; color: #a0a0c0;">
@@ -182,7 +176,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         <div class="info-grid">
             <div class="info-card">
                 <h3>📡 Informazioni Tecniche</h3>
-                <p>• Server: Icecast 2</p>
+                <p>• Server: Flask Direct Stream</p>
                 <p>• Bitrate: 128 kbps</p>
                 <p>• Formato: MP3</p>
                 <p>• Canali: Stereo</p>
@@ -198,243 +192,4 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 <h3>🤖 Integrazione IRC</h3>
                 <p>• Bot: RadioBot</p>
                 <p>• Server: Libera.chat</p>
-                <p>• Comandi: !radio, !status</p>
-                <p>• Canale: #radio-irc</p>
-            </div>
-        </div>
-        
-        <div class="btn-group">
-            <a href="{{ stream_url }}" class="btn" download>
-                <span>📥</span> Scarica Stream
-            </a>
-            <a href="/status" class="btn btn-secondary" target="_blank">
-                <span>📊</span> API Status
-            </a>
-            <a href="/test" class="btn btn-secondary">
-                <span>🔧</span> System Test
-            </a>
-            <a href="https://github.com" class="btn btn-secondary" target="_blank">
-                <span>🐙</span> GitHub
-            </a>
-        </div>
-        
-        <div class="status-bar">
-            <div class="status-item">
-                <span class="online-dot"></span>
-                <span>Stato: <strong id="statusText">Online</strong></span>
-            </div>
-            <div class="status-item">
-                <span>🆔</span>
-                <span>Server: {{ server_id }}</span>
-            </div>
-            <div class="status-item">
-                <span>🕐</span>
-                <span>Ora: {{ server_time }}</span>
-            </div>
-            <div class="status-item">
-                <span>👂</span>
-                <span>Listeners: <span id="listenerCount">0</span></span>
-            </div>
-        </div>
-    </div>
-    
-    <script>
-        async function updateStatus() {
-            try {
-                const response = await fetch('/status');
-                const data = await response.json();
-                
-                document.getElementById('statusText').textContent = 
-                    data.status.charAt(0).toUpperCase() + data.status.slice(1);
-                document.getElementById('listenerCount').textContent = 
-                    data.stats.listeners || 0;
-                
-                // Aggiorna ogni 30 secondi
-                setTimeout(updateStatus, 30000);
-            } catch (error) {
-                console.log('Status update failed:', error);
-                document.getElementById('statusText').textContent = 'Offline';
-                setTimeout(updateStatus, 10000);
-            }
-        }
-        
-        // Inizializza
-        document.addEventListener('DOMContentLoaded', function() {
-            updateStatus();
-            
-            // Gestione riproduzione automatica
-            const audio = document.querySelector('audio');
-            audio.addEventListener('error', function() {
-                console.log('Audio error, trying alternative source...');
-                this.src = '/radio.mp3?t=' + new Date().getTime();
-                this.load();
-            });
-            
-            // Aggiorna ora locale ogni minuto
-            function updateLocalTime() {
-                const now = new Date();
-                document.querySelectorAll('.local-time').forEach(el => {
-                    el.textContent = now.toLocaleTimeString();
-                });
-            }
-            setInterval(updateLocalTime, 60000);
-            updateLocalTime();
-        });
-    </script>
-</body>
-</html>'''
-
-@app.route('/')
-def home():
-    """Pagina principale con player audio"""
-    return render_template_string(
-        HTML_TEMPLATE,
-        radio_name=RADIO_NAME,
-        stream_url=STREAM_URL,
-        server_time=time.strftime("%Y-%m-%d %H:%M:%S"),
-        server_id=socket.gethostname()
-    )
-
-@app.route('/radio.mp3')
-def radio_stream():
-    """Stream audio diretto - senza Icecast"""
-    from flask import Response
-    import time
-    
-    def generate_audio():
-        # Header MP3 minimale per stream infinito
-        mp3_frame = bytes([
-            0xFF, 0xFB, 0x90, 0x64,  # MP3 frame header
-            0x00, 0x00, 0x00, 0x00,  # Dummy data (silenzio)
-            0x00, 0x00, 0x00, 0x00,
-            0x00, 0x00, 0x00, 0x00,
-            0x00, 0x00, 0x00, 0x00,
-            0x00, 0x00, 0x00, 0x00,
-            0x00, 0x00, 0x00, 0x00,
-            0x00, 0x00, 0x00, 0x00
-        ])
-        
-        # Loop infinito - stream continuo
-        while True:
-            yield mp3_frame
-            time.sleep(0.023)  # ~128kbps
-    
-    return Response(
-        generate_audio(),
-        mimetype='audio/mpeg',
-        headers={
-            'Content-Type': 'audio/mpeg',
-            'Cache-Control': 'no-cache, no-store, must-revalidate',
-            'Pragma': 'no-cache',
-            'Expires': '0',
-            'Transfer-Encoding': 'chunked'
-        }
-    )
-
-@app.route('/status')
-def status():
-    """API status per il bot IRC"""
-    try:
-        # Conta "listeners" approssimativi
-        import random
-        listeners = random.randint(0, 5)  # Simulato per demo
-        
-        return jsonify({
-            "status": "online",
-            "radio_name": RADIO_NAME,
-            "stream_url": "https://pipparadio-1.onrender.com/radio.mp3",
-            "timestamp": time.time(),
-            "server_time": time.strftime("%Y-%m-%d %H:%M:%S"),
-            "server_id": socket.gethostname(),
-            "stats": {
-                "tracks_available": 1,
-                "listeners": listeners,
-                "bitrate": "128kbps",
-                "format": "MP3",
-                "stream_type": "flask_direct",
-                "icecast": "not_used"
-            }
-        })
-    except Exception as e:
-        return jsonify({
-            "status": "error",
-            "message": str(e)
-        }), 500
-
-@app.route('/health')
-def health():
-    """Health check per Render"""
-    try:
-        # Verifica che i servizi siano attivi
-        import urllib.request
-        # Verifica Flask
-        with urllib.request.urlopen(f"http://localhost:10000/", timeout=2) as response:
-            if response.getcode() == 200:
-                return "OK", 200
-    except:
-        pass
-    return "SERVICE UNAVAILABLE", 503
-
-@app.route('/test')
-def test():
-    """Pagina di test con info sistema"""
-    system_info = {
-        "python_version": os.sys.version,
-        "hostname": socket.gethostname(),
-        "platform": os.sys.platform,
-        "working_dir": os.getcwd(),
-        "flask_port": 10000,
-        "icecast_port": ICE_PORT,
-        "timestamp": time.time(),
-        "services": {}
-    }
-    
-    # Verifica FFmpeg
-    try:
-        result = subprocess.run(['ffmpeg', '-version'], capture_output=True, text=True, timeout=5)
-        system_info['services']['ffmpeg'] = {
-            "installed": result.returncode == 0,
-            "version": result.stdout.split('\n')[0][:50] if result.stdout else "Unknown"
-        }
-    except:
-        system_info['services']['ffmpeg'] = {"installed": False}
-    
-    # Verifica Icecast
-    try:
-        import urllib.request
-        with urllib.request.urlopen(f"http://{ICE_HOST}:{ICE_PORT}/", timeout=5) as response:
-            system_info['services']['icecast'] = {
-                "running": True,
-                "status_code": response.getcode()
-            }
-    except:
-        system_info['services']['icecast'] = {"running": False}
-    
-    return jsonify(system_info)
-
-@app.route('/api/nowplaying')
-def now_playing():
-    """Endpoint per il now playing"""
-    return jsonify({
-        "title": "24/7 Radio Stream",
-        "artist": "Radio IRC",
-        "album": "Continuous Playback",
-        "duration": 3600,
-        "bitrate": 128,
-        "samplerate": 44100,
-        "channels": 2,
-        "format": "MP3"
-    })
-
-if __name__ == '__main__':
-    print("=" * 60)
-    print("🚀 RADIO IRC - WEB SERVER")
-    print("=" * 60)
-    print(f"📻 Radio: {RADIO_NAME}")
-    print(f"🔗 Stream: http://{ICE_HOST}:{ICE_PORT}/radio.mp3")
-    print(f"🌐 Web UI: http://0.0.0.0:10000")
-    print(f"📊 API: http://0.0.0.0:10000/status")
-    print(f"❤️  Health: http://0.0.0.0:10000/health")
-    print("=" * 60)
-    
-    app.run(host='0.0.0.0', port=10000, debug=False)
+                <p>• Comandi
