@@ -284,83 +284,78 @@ def home():
 
 @app.route('/radio.mp3')
 def radio_stream():
-    """Stream dal TUO file MP3"""
-    from flask import Response
+    """Stream radio CONTINUO con playlist"""
+    import glob
+    import random
     import os
+    import time
     
-    print("🎧 Richiesta stream ricevuta")
+    print("📻 Stream radio CONTINUO avviato")
     
-    # 1. PRIMA cerca il TUO file MP3
-    # SOSTITUISCI "tuo_file.mp3" con il NOME ESATTO del tuo file
-    tuo_file = "static/Alberto Camerini - Rock & Roll robot.mp3"  # <-- AGGIUNGI "static/""  # <-- CAMBIA QUESTA RIGA!
+    # Trova tutte le canzoni
+    mp3_files = sorted(glob.glob("static/*.mp3"))
     
-    # Lista di file da provare (in ordine)
-    file_da_provare = [
-        tuo_file,                       # 1. Il tuo file specifico
-        "static/musica.mp3",            # 2. Nomi comuni
-        "static/audio.mp3",
-        "static/track.mp3",
-        "static/song.mp3",
-        "static/music.mp3",
-        "static/radio.mp3"
-    ]
+    if not mp3_files:
+        print("❌ Nessuna canzone trovata")
+        return Response(b'', mimetype='audio/mpeg')
     
-    # 2. Trova il primo file che esiste
-    file_scelto = None
-    for file in file_da_provare:
-        if os.path.exists(file):
-            dimensione = os.path.getsize(file)
-            if dimensione > 1000:  # Almeno 1KB
-                file_scelto = file
-                print(f"✅ Trovato: {file} ({dimensione} bytes)")
-                break
-            else:
-                print(f"⚠️  File troppo piccolo: {file} ({dimensione} bytes)")
+    print(f"🎵 Playlist: {len(mp3_files)} canzoni")
+    for i, f in enumerate(mp3_files):
+        print(f"   {i+1}. {os.path.basename(f)}")
     
-    # 3. Se nessun file trovato, usa fallback
-    if not file_scelto:
-        print("❌ Nessun file MP3 trovato, uso silenzio")
-        # MP3 di silenzio
-        mp3_data = b'ID3\x03\x00\x00\x00\x00\x00\x00' + (b'\xFF\xFB\x90\x64' * 100)
+    # Calcola tempo totale playlist (per loop continuo)
+    def get_track_position():
+        """Calcola posizione nella playlist basata su tempo reale"""
+        # Usa il tempo Unix per determinare posizione ciclica
+        # Ogni canzone dura 180 secondi (3 minuti) per esempio
+        TRACK_DURATION = 180  # secondi per canzone
+        total_duration = len(mp3_files) * TRACK_DURATION
         
-        def generate_silence():
-            yield mp3_data
+        # Tempo dall'inizio del ciclo (basato su tempo Unix)
+        cycle_time = int(time.time()) % total_duration
         
-        return Response(
-            generate_silence(),
-            mimetype='audio/mpeg',
-            headers={'Content-Type': 'audio/mpeg'}
-        )
+        # Determina quale canzone e a che punto
+        current_track = cycle_time // TRACK_DURATION
+        track_position = cycle_time % TRACK_DURATION
+        
+        return current_track % len(mp3_files), track_position
     
-    # 4. Leggi il TUO file MP3
-    try:
-        with open(file_scelto, 'rb') as f:
-            tuoi_dati_mp3 = f.read()
-        
-        print(f"📊 Letti {len(tuoi_dati_mp3)} bytes da {file_scelto}")
-        
-        # 5. Crea stream infinito (loop)
-        def generate_music():
-            while True:  # Loop INFINITO
-                yield tuoi_dati_mp3
-        
-        return Response(
-            generate_music(),
-            mimetype='audio/mpeg',
-            headers={
-                'Content-Type': 'audio/mpeg',
-                'Cache-Control': 'no-cache'
-            }
-        )
-        
-    except Exception as e:
-        print(f"❌ Errore: {e}")
-        # Fallback a silenzio
-        return Response(
-            b'MP3 error',
-            mimetype='audio/mpeg',
-            status=500
-        )
+    def generate_continuous_stream():
+        """Genera stream infinito che non ricomincia mai"""
+        while True:
+            current_track, position = get_track_position()
+            mp3_file = mp3_files[current_track]
+            
+            print(f"🎧 Now playing: {os.path.basename(mp3_file)} "
+                  f"(pos: {position}s)")
+            
+            try:
+                with open(mp3_file, 'rb') as f:
+                    # Se conosci la durata esatta, potresti saltare alla posizione
+                    # Per ora leggiamo tutta la canzone
+                    audio_data = f.read()
+                
+                yield audio_data
+                
+                # Aspetta prima di passare alla prossima canzone
+                # (nella realtà dovresti calcolare durata reale)
+                time.sleep(1)
+                
+            except Exception as e:
+                print(f"⚠️  Errore: {e}")
+                yield b''
+    
+    return Response(
+        generate_continuous_stream(),
+        mimetype='audio/mpeg',
+        headers={
+            'Content-Type': 'audio/mpeg',
+            'Cache-Control': 'no-cache, no-store',
+            'Connection': 'keep-alive'
+        }
+    )
+
+
 @app.route('/status')
 def status():
     """API status per il bot IRC"""
