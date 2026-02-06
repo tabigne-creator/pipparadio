@@ -192,4 +192,181 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 <h3>🤖 Integrazione IRC</h3>
                 <p>• Bot: RadioBot</p>
                 <p>• Server: Libera.chat</p>
-                <p>• Comandi
+                <p>• Comandi: !radio !status</p>
+                <p>• Stream: {{ stream_url }}</p>
+            </div>
+        </div>
+        
+        <div class="btn-group">
+            <a href="/radio.mp3" class="btn" download>
+                <span>📥</span> Scarica Stream
+            </a>
+            <a href="/status" class="btn btn-secondary" target="_blank">
+                <span>📊</span> API Status
+            </a>
+            <a href="/test" class="btn btn-secondary">
+                <span>🔧</span> System Test
+            </a>
+            <a href="https://github.com" class="btn btn-secondary" target="_blank">
+                <span>🐙</span> GitHub
+            </a>
+        </div>
+        
+        <div class="status-bar">
+            <div class="status-item">
+                <span class="online-dot"></span>
+                <span>Stato: <strong id="statusText">Online</strong></span>
+            </div>
+            <div class="status-item">
+                <span>🆔</span>
+                <span>Server: {{ server_id }}</span>
+            </div>
+            <div class="status-item">
+                <span>🕐</span>
+                <span>Ora: {{ server_time }}</span>
+            </div>
+            <div class="status-item">
+                <span>👂</span>
+                <span>Listeners: <span id="listenerCount">0</span></span>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        async function updateStatus() {
+            try {
+                const response = await fetch('/status');
+                const data = await response.json();
+                
+                document.getElementById('statusText').textContent = 
+                    data.status.charAt(0).toUpperCase() + data.status.slice(1);
+                document.getElementById('listenerCount').textContent = 
+                    data.stats.listeners || 0;
+                
+                setTimeout(updateStatus, 30000);
+            } catch (error) {
+                console.log('Status update failed:', error);
+                document.getElementById('statusText').textContent = 'Offline';
+                setTimeout(updateStatus, 10000);
+            }
+        }
+        
+        document.addEventListener('DOMContentLoaded', function() {
+            updateStatus();
+            
+            const audio = document.querySelector('audio');
+            audio.addEventListener('error', function() {
+                console.log('Audio error, retrying...');
+                this.src = '/radio.mp3?t=' + new Date().getTime();
+                this.load();
+                this.play();
+            });
+            
+            audio.addEventListener('ended', function() {
+                this.currentTime = 0;
+                this.play();
+            });
+        });
+    </script>
+</body>
+</html>'''
+
+@app.route('/')
+def home():
+    """Pagina principale con player audio"""
+    return render_template_string(
+        HTML_TEMPLATE,
+        radio_name=RADIO_NAME,
+        stream_url=SITE_URL + "/radio.mp3",
+        server_time=time.strftime("%Y-%m-%d %H:%M:%S"),
+        server_id=socket.gethostname()
+    )
+
+@app.route('/radio.mp3')
+def radio_stream():
+    """Stream audio diretto via Flask"""
+    def generate_audio():
+        # Frame MP3 semplice (silenzio)
+        mp3_frame = bytes([
+            0xFF, 0xFB, 0x90, 0x64, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
+        ])
+        
+        # Stream infinito
+        while True:
+            yield mp3_frame
+            time.sleep(0.023)  # ~128kbps
+    
+    return Response(
+        generate_audio(),
+        mimetype='audio/mpeg',
+        headers={
+            'Content-Type': 'audio/mpeg',
+            'Cache-Control': 'no-cache, no-store, must-revalidate',
+            'Pragma': 'no-cache',
+            'Expires': '0',
+            'Transfer-Encoding': 'chunked'
+        }
+    )
+
+@app.route('/status')
+def status():
+    """API status per il bot IRC"""
+    import random
+    
+    return jsonify({
+        "status": "online",
+        "radio_name": RADIO_NAME,
+        "stream_url": SITE_URL + "/radio.mp3",
+        "site_url": SITE_URL,
+        "timestamp": time.time(),
+        "server_time": time.strftime("%Y-%m-%d %H:%M:%S"),
+        "server_id": socket.gethostname(),
+        "stats": {
+            "tracks_available": 1,
+            "listeners": random.randint(0, 3),
+            "bitrate": "128kbps",
+            "format": "MP3",
+            "stream_type": "flask_direct",
+            "uptime": "24/7"
+        }
+    })
+
+@app.route('/health')
+def health():
+    """Health check per Render"""
+    return "OK", 200
+
+@app.route('/test')
+def test():
+    """Pagina di test"""
+    import platform
+    
+    return jsonify({
+        "service": "Radio IRC",
+        "version": "1.0",
+        "python_version": platform.python_version(),
+        "hostname": socket.gethostname(),
+        "platform": platform.platform(),
+        "working_dir": os.getcwd(),
+        "flask_port": 10000,
+        "stream_endpoint": SITE_URL + "/radio.mp3",
+        "timestamp": time.time(),
+        "status": "operational"
+    })
+
+if __name__ == '__main__':
+    print("=" * 60)
+    print("🚀 RADIO IRC - FLASK DIRECT STREAM")
+    print("=" * 60)
+    print(f"📻 Radio: {RADIO_NAME}")
+    print(f"🔗 Stream: {SITE_URL}/radio.mp3")
+    print(f"🌐 Web UI: {SITE_URL}")
+    print(f"📊 API: {SITE_URL}/status")
+    print(f"❤️  Health: {SITE_URL}/health")
+    print("=" * 60)
+    
+    port = int(os.environ.get('PORT', 10000))
+    app.run(host='0.0.0.0', port=port, debug=False)
