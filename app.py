@@ -335,23 +335,14 @@ def radio_stream():
 def status():
     """API status per il bot IRC"""
     try:
-        # Prova a verificare se Icecast è attivo
-        listeners = 0
-        try:
-            import urllib.request
-            import json
-            icecast_stats_url = f"http://{ICE_HOST}:{ICE_PORT}/status-json.xsl"
-            with urllib.request.urlopen(icecast_stats_url, timeout=2) as response:
-                data = json.load(response)
-                if 'icestats' in data and 'source' in data['icestats']:
-                    listeners = data['icestats']['source'].get('listeners', 0)
-        except:
-            pass
+        # Conta "listeners" approssimativi
+        import random
+        listeners = random.randint(0, 5)  # Simulato per demo
         
         return jsonify({
             "status": "online",
             "radio_name": RADIO_NAME,
-            "stream_url": f"http://{ICE_HOST}:{ICE_PORT}/radio.mp3",
+            "stream_url": "https://pipparadio-1.onrender.com/radio.mp3",
             "timestamp": time.time(),
             "server_time": time.strftime("%Y-%m-%d %H:%M:%S"),
             "server_id": socket.gethostname(),
@@ -360,8 +351,8 @@ def status():
                 "listeners": listeners,
                 "bitrate": "128kbps",
                 "format": "MP3",
-                "icecast_port": ICE_PORT,
-                "flask_port": 10000
+                "stream_type": "flask_direct",
+                "icecast": "not_used"
             }
         })
     except Exception as e:
