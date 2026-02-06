@@ -284,78 +284,86 @@ def home():
 
 @app.route('/radio.mp3')
 def radio_stream():
-    """Stream MP3 GARANTITO - sempre funzionante"""
+    """Stream MP3 FUNZIONANTE - legge e invia file in loop"""
     from flask import Response
     import os
     
-    print("🎧 === INIZIO STREAM MP3 ===")
+    print("🎧 === INIZIO STREAM MP3 VERO ===")
     
-    # 1. Crea file MP3 se non esiste
+    # 1. Verifica/Crea file MP3
     audio_file = "static/radio_stream.mp3"
     
     if not os.path.exists(audio_file) or os.path.getsize(audio_file) < 1000:
-        print("📝 Creazione nuovo file MP3...")
+        print("📝 Creazione file MP3 di silenzio...")
         os.makedirs("static", exist_ok=True)
         
-        # COMANDO FFMPEG SEMPLICISSIMO
-        cmd = 'ffmpeg -f lavfi -i anullsrc=r=44100:cl=stereo -t 10 -c:a libmp3lame -b:a 128k -ar 44100 -ac 2 -y "' + audio_file + '"'
-        print(f"🔧 Comando: {cmd}")
-        
+        # Usa FFmpeg per creare 30 secondi di silenzio MP3 VALIDO
         import subprocess
         try:
-            # Esegui FFmpeg
-            result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
+            cmd = [
+                'ffmpeg',
+                '-f', 'lavfi',
+                '-i', 'anullsrc=r=44100:cl=stereo',
+                '-t', '30',          # 30 secondi di audio
+                '-c:a', 'libmp3lame',
+                '-b:a', '128k',
+                '-ar', '44100',
+                '-ac', '2',
+                '-y',                # Sovrascrivi
+                audio_file
+            ]
             
-            if result.returncode != 0:
-                print(f"❌ FFmpeg errore: {result.stderr[:200]}")
-                # Fallback: crea file MP3 manualmente
-                print("🔄 Fallback a MP3 manuale...")
-                with open(audio_file, 'wb') as f:
-                    # Scrivi dati MP3 minimi
-                    f.write(b'ID3\x03\x00\x00\x00\x00\x00\x00')  # Header ID3
-                    # Aggiungi frame MP3 semplice
-                    for _ in range(100):
-                        f.write(b'\xFF\xFB\x90\x64\x00\x0F\xF0\x00\x00\x69\x00\x00')
+            result = subprocess.run(cmd, capture_output=True, text=True)
+            
+            if result.returncode == 0:
+                file_size = os.path.getsize(audio_file)
+                print(f"✅ File MP3 creato: {file_size} bytes")
             else:
-                print(f"✅ File creato: {os.path.getsize(audio_file)} bytes")
+                print(f"❌ FFmpeg fallito: {result.stderr[:100]}")
+                return "Errore creazione audio", 500
                 
         except Exception as e:
-            print(f"⚠️  Eccezione FFmpeg: {e}")
+            print(f"⚠️  Errore FFmpeg: {e}")
+            return "Errore server audio", 500
     
-    # 2. Leggi il file
-    try:
-        with open(audio_file, 'rb') as f:
-            mp3_data = f.read()
+    # 2. Funzione generator per lo streaming
+    def generate_audio_stream():
+        chunk_size = 8192  # 8KB per chunk (dimensione tipica)
         
-        if len(mp3_data) == 0:
-            raise ValueError("File MP3 vuoto")
-        
-        print(f"📊 Dati MP3: {len(mp3_data)} bytes")
-        
-    except Exception as e:
-        print(f"❌ Errore lettura file: {e}")
-        # Dati MP3 di fallback (silenzio)
-        mp3_data = b'ID3\x03\x00\x00\x00\x00\x00\x00' + (b'\xFF\xFB\x90\x64' * 100)
+        while True:  # Loop ESTERNO infinito per streaming continuo
+            try:
+                with open(audio_file, 'rb') as f:
+                    while True:  # Loop INTERNO: legge tutto il file
+                        chunk = f.read(chunk_size)
+                        if not chunk:  # Fine del file
+                            break  # Esce dal loop interno, ricomincia
+                        yield chunk
+                        
+                        # Piccola pausa per simulare bitrate realistico
+                        # ~128kbps = ~16KB/s = ~2 chunk/s
+                        # time.sleep(0.01)  # Opzionale: decommenta se troppo veloce
+            except Exception as e:
+                print(f"⚠️  Errore lettura file durante stream: {e}")
+                # Invia qualche dato di fallback e ricomincia
+                yield b'\x00' * chunk_size
     
-    # 3. Crea response
-    print(f"📤 Invio {len(mp3_data)} bytes di MP3")
+    # 3. Prepara la risposta
+    file_size = os.path.getsize(audio_file)
+    print(f"📡 Avvio streaming: {audio_file} ({file_size} bytes)")
+    print(f"🔁 Modalità: LOOP INFINITO (stream continuo)")
     
-    def generate():
-        # Loop infinito
-        while True:
-            yield mp3_data
-    
-    response = Response(
-        generate(),
+    return Response(
+        generate_audio_stream(),
         mimetype='audio/mpeg',
         headers={
             'Content-Type': 'audio/mpeg',
-            'Cache-Control': 'no-cache'
+            'Cache-Control': 'no-cache, no-store, must-revalidate',
+            'Pragma': 'no-cache',
+            'Expires': '0'
+            # NOTA: NON usare 'Transfer-Encoding': 'chunked' esplicitamente,
+            # Flask lo gestisce automaticamente con Response(generator)
         }
     )
-    
-    print("✅ Response creata")
-    return response
 @app.route('/status')
 def status():
     """API status per il bot IRC"""
