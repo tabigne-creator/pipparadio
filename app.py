@@ -297,8 +297,18 @@ def home():
 
 @app.route('/radio.mp3')
 def radio_stream():
-    """Reindirizza allo stream Icecast"""
-    return redirect(f"http://{ICE_HOST}:{ICE_PORT}/radio.mp3", code=302)
+    """Stream audio - prova Icecast, altrimenti file locale"""
+    try:
+        # Prova a connettersi a Icecast
+        import urllib.request
+        test_url = "http://localhost:8000/"
+        urllib.request.urlopen(test_url, timeout=2)
+        # Icecast attivo, reindirizza
+        return redirect("http://localhost:8000/radio.mp3", code=302)
+    except:
+        # Icecast non attivo, servi file direttamente
+        from flask import send_file
+        return send_file('static/silence.mp3', mimetype='audio/mpeg')
 
 @app.route('/status')
 def status():
