@@ -284,32 +284,59 @@ def home():
 
 @app.route('/radio.mp3')
 def radio_stream():
-    """Stream audio diretto via Flask"""
-    def generate_audio():
-        # Frame MP3 semplice (silenzio)
-        mp3_frame = bytes([
-            0xFF, 0xFB, 0x90, 0x64, 0x00, 0x00, 0x00, 0x00,
-            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
+    """Stream audio dal file MP3"""
+    from flask import send_file, Response
+    import os
+    
+    audio_file = "static/silence.mp3"
+    
+    # Se il file esiste, servilo con streaming
+    if os.path.exists(audio_file):
+        file_size = os.path.getsize(audio_file)
+        
+        def generate():
+            with open(audio_file, 'rb') as f:
+                while True:
+                    data = f.read(8192)  # 8KB chunks
+                    if not data:
+                        f.seek(0)  # Loop infinito
+                        continue
+                    yield data
+        
+        return Response(
+            generate(),
+            mimetype='audio/mpeg',
+            headers={
+                'Content-Type': 'audio/mpeg',
+                'Cache-Control': 'no-cache, no-store, must-revalidate',
+                'Pragma': 'no-cache',
+                'Expires': '0',
+                'Transfer-Encoding': 'chunked',
+                'Content-Length': str(file_size)
+            }
+        )
+    else:
+        # Fallback: crea audio minimale
+        print("⚠️  File audio non trovato, uso fallback")
+        mp3_data = bytes([
+            0xFF, 0xFB, 0x90, 0x64, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
         ])
         
-        # Stream infinito
-        while True:
-            yield mp3_frame
-            time.sleep(0.023)  # ~128kbps
-    
-    return Response(
-        generate_audio(),
-        mimetype='audio/mpeg',
-        headers={
-            'Content-Type': 'audio/mpeg',
-            'Cache-Control': 'no-cache, no-store, must-revalidate',
-            'Pragma': 'no-cache',
-            'Expires': '0',
-            'Transfer-Encoding': 'chunked'
-        }
-    )
+        def generate_fallback():
+            while True:
+                yield mp3_data
+        
+        return Response(
+            generate_fallback(),
+            mimetype='audio/mpeg',
+            headers={
+                'Content-Type': 'audio/mpeg',
+                'Cache-Control': 'no-cache'
+            }
+        )
 
 @app.route('/status')
 def status():
