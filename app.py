@@ -284,79 +284,68 @@ def home():
 
 @app.route('/radio.mp3')
 def radio_stream():
-    """Stream audio da file MP3 reale"""
+    """Stream audio dal tuo file MP3"""
     from flask import Response
     import os
-    import subprocess
     
-    audio_file = "static/stream.mp3"
+    # Nome del TUO file MP3 (cambia se necessario)
+    your_audio_file = "static/Rock&Rollrobot.mp3"  # <-- CAMBIA QUESTO NOME!
     
-    # 1. Crea file MP3 valido se non esiste
-    if not os.path.exists(audio_file) or os.path.getsize(audio_file) < 1000:
-        print("🎵 Creazione file MP3 valido con FFmpeg...")
-        os.makedirs("static", exist_ok=True)
-        
-        # Crea 10 secondi di silenzio MP3 VALIDO
-        cmd = [
-            'ffmpeg',
-            '-f', 'lavfi',
-            '-i', 'anullsrc=r=44100:cl=stereo',
-            '-t', '10',                    # 10 secondi
-            '-c:a', 'libmp3lame',
-            '-b:a', '128k',
-            '-ar', '44100',
-            '-ac', '2',
-            '-y',                          # Sovrascrivi
-            audio_file
-        ]
-        
-        try:
-            result = subprocess.run(cmd, capture_output=True, text=True)
-            if result.returncode == 0:
-                print(f"✅ MP3 creato: {os.path.getsize(audio_file)} bytes")
-            else:
-                print(f"⚠️  FFmpeg errore: {result.stderr[:100]}")
-                # Fallback: copia silence.mp3 se esiste
-                if os.path.exists("static/silence.mp3"):
-                    audio_file = "static/silence.mp3"
-        except Exception as e:
-            print(f"❌ Errore FFmpeg: {e}")
+    # Lista file da provare in ordine
+    audio_files = [
+        your_audio_file,                     # Il tuo file
+        "static/music.mp3",                  # Nomi comuni
+        "static/audio.mp3",
+        "static/stream.mp3",
+        "static/silence.mp3"                 # Fallback
+    ]
     
-    # 2. Leggi il file MP3
-    try:
-        with open(audio_file, 'rb') as f:
-            mp3_data = f.read()
+    # Trova il primo file esistente
+    audio_file = None
+    for file in audio_files:
+        if os.path.exists(file) and os.path.getsize(file) > 1000:
+            audio_file = file
+            print(f"🎵 Usando file audio: {file} ({os.path.getsize(file)} bytes)")
+            break
+    
+    if not audio_file:
+        print("❌ Nessun file audio trovato, creo silenzio...")
+        # Crea file di fallback
+        audio_file = "static/fallback.mp3"
+        import subprocess
+        subprocess.run([
+            'ffmpeg', '-f', 'lavfi', '-i', 'anullsrc=r=44100:cl=stereo',
+            '-t', '30', '-acodec', 'libmp3lame', audio_file
+        ], capture_output=True)
+    
+    # Funzione per generare stream infinito
+    def generate_stream():
+        chunk_size = 8192  # 8KB per chunk
         
-        if len(mp3_data) < 100:
-            raise ValueError("File MP3 troppo piccolo")
-        
-        print(f"🎧 Streaming {len(mp3_data)} bytes di MP3")
-        
-        def generate():
-            # Loop infinito del file MP3
-            while True:
-                yield mp3_data
-        
-        return Response(
-            generate(),
-            mimetype='audio/mpeg',
-            headers={
-                'Content-Type': 'audio/mpeg',
-                'Cache-Control': 'no-cache, no-store, must-revalidate',
-                'Pragma': 'no-cache',
-                'Expires': '0'
-            }
-        )
-        
-    except Exception as e:
-        print(f"❌ Errore streaming: {e}")
-        # Fallback ultimo: audio semplice
-        return Response(
-            b'',
-            mimetype='audio/mpeg',
-            status=200
-        )
-
+        while True:
+            try:
+                with open(audio_file, 'rb') as f:
+                    while True:
+                        chunk = f.read(chunk_size)
+                        if not chunk:
+                            break  # Fine file, ricomincia
+                        yield chunk
+            except Exception as e:
+                print(f"⚠️  Errore lettura file: {e}")
+                # Fallback a silenzio
+                yield b''
+    
+    return Response(
+        generate_stream(),
+        mimetype='audio/mpeg',
+        headers={
+            'Content-Type': 'audio/mpeg',
+            'Cache-Control': 'no-cache, no-store, must-revalidate',
+            'Pragma': 'no-cache',
+            'Expires': '0',
+            'Transfer-Encoding': 'chunked'
+        }
+    )
 @app.route('/status')
 def status():
     """API status per il bot IRC"""
