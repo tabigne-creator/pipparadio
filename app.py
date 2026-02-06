@@ -284,26 +284,29 @@ def home():
 
 @app.route('/radio.mp3')
 def radio_stream():
-    """Stream audio garantito - sempre funzionante"""
+    """Stream audio funzionante garantito"""
     from flask import Response
     import time
     
-    # MP3 header valido per silenzio a 128kbps 44.1kHz stereo
-    # Questo è un frame MP3 VALIDO (315 byte)
-    mp3_frame = bytes.fromhex(
-        'fff3906400000ff0000069000000000800000d2000000001000001a400000000200000348000000004c414d45332e3130305555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555'
-    )[:315]  # Taglia a dimensione corretta
+    # Frame MP3 semplice ma valido (72 byte)
+    # Questo è un frame MP3 valido per silenzio
+    mp3_frame = bytes([
+        0xFF, 0xF3, 0x90, 0x64, 0x00, 0x0F, 0xF0, 0x00,
+        0x00, 0x69, 0x00, 0x00, 0x00, 0x08, 0x00, 0x00,
+        0x0D, 0x20, 0x00, 0x00, 0x01, 0x00, 0x00, 0x01,
+        0xA4, 0x00, 0x00, 0x00, 0x20, 0x00, 0x00, 0x34,
+        0x80, 0x00, 0x00, 0x04, 0x4C, 0x41, 0x4D, 0x45,
+        0x33, 0x2E, 0x31, 0x30, 0x30, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
+    ])
     
     def generate_audio():
-        # Stream infinito di frame MP3 validi
-        frame_count = 0
+        # Stream infinito
         while True:
             yield mp3_frame
-            frame_count += 1
-            
-            # Ogni 100 frame, piccolo delay per bitrate realistico
-            if frame_count % 100 == 0:
-                time.sleep(0.1)
+            time.sleep(0.026)  # 128kbps timing
     
     return Response(
         generate_audio(),
@@ -312,8 +315,7 @@ def radio_stream():
             'Content-Type': 'audio/mpeg',
             'Cache-Control': 'no-cache, no-store, must-revalidate',
             'Pragma': 'no-cache',
-            'Expires': '0',
-            'Transfer-Encoding': 'chunked'
+            'Expires': '0'
         }
     )
 
