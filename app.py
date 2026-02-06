@@ -292,7 +292,7 @@ def radio_stream():
     
     # 1. PRIMA cerca il TUO file MP3
     # SOSTITUISCI "tuo_file.mp3" con il NOME ESATTO del tuo file
-    tuo_file = "Alberto Camerini - Rock & Roll robot.mp3"  # <-- CAMBIA QUESTA RIGA!
+    tuo_file = "static/Alberto Camerini - Rock & Roll robot.mp3"  # <-- AGGIUNGI "static/""  # <-- CAMBIA QUESTA RIGA!
     
     # Lista di file da provare (in ordine)
     file_da_provare = [
@@ -405,6 +405,26 @@ def test():
         "stream_endpoint": SITE_URL + "/radio.mp3",
         "timestamp": time.time(),
         "status": "operational"
+    })
+
+@app.route('/debug/files')
+def debug_files():
+    """Mostra tutti i file disponibili"""
+    import glob, os, json
+    
+    files = []
+    for pattern in ["*", "static/*"]:
+        for file in glob.glob(pattern):
+            if os.path.isfile(file):
+                files.append({
+                    "name": file,
+                    "size": os.path.getsize(file),
+                    "is_mp3": file.lower().endswith('.mp3')
+                })
+    
+    return jsonify({
+        "current_dir": os.getcwd(),
+        "files": files
     })
 
 if __name__ == '__main__':
