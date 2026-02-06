@@ -292,7 +292,7 @@ def radio_stream():
     
     # 1. PRIMA cerca il TUO file MP3
     # SOSTITUISCI "tuo_file.mp3" con il NOME ESATTO del tuo file
-    tuo_file = "static/tuo_file.mp3"  # <-- CAMBIA QUESTA RIGA!
+    tuo_file = "Alberto Camerini - Rock Roll robot.mp3"  # <-- CAMBIA QUESTA RIGA!
     
     # Lista di file da provare (in ordine)
     file_da_provare = [
