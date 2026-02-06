@@ -297,18 +297,39 @@ def home():
 
 @app.route('/radio.mp3')
 def radio_stream():
-    """Stream audio - prova Icecast, altrimenti file locale"""
-    try:
-        # Prova a connettersi a Icecast
-        import urllib.request
-        test_url = "http://localhost:8000/"
-        urllib.request.urlopen(test_url, timeout=2)
-        # Icecast attivo, reindirizza
-        return redirect("http://localhost:8000/radio.mp3", code=302)
-    except:
-        # Icecast non attivo, servi file direttamente
-        from flask import send_file
-        return send_file('static/silence.mp3', mimetype='audio/mpeg')
+    """Stream audio diretto - senza Icecast"""
+    from flask import Response
+    import time
+    
+    def generate_audio():
+        # Header MP3 minimale per stream infinito
+        mp3_frame = bytes([
+            0xFF, 0xFB, 0x90, 0x64,  # MP3 frame header
+            0x00, 0x00, 0x00, 0x00,  # Dummy data (silenzio)
+            0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00
+        ])
+        
+        # Loop infinito - stream continuo
+        while True:
+            yield mp3_frame
+            time.sleep(0.023)  # ~128kbps
+    
+    return Response(
+        generate_audio(),
+        mimetype='audio/mpeg',
+        headers={
+            'Content-Type': 'audio/mpeg',
+            'Cache-Control': 'no-cache, no-store, must-revalidate',
+            'Pragma': 'no-cache',
+            'Expires': '0',
+            'Transfer-Encoding': 'chunked'
+        }
+    )
 
 @app.route('/status')
 def status():
