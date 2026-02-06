@@ -284,40 +284,78 @@ def home():
 
 @app.route('/radio.mp3')
 def radio_stream():
-    """Stream audio funzionante garantito"""
+    """Stream audio da file MP3 reale"""
     from flask import Response
-    import time
+    import os
+    import subprocess
     
-    # Frame MP3 semplice ma valido (72 byte)
-    # Questo è un frame MP3 valido per silenzio
-    mp3_frame = bytes([
-        0xFF, 0xF3, 0x90, 0x64, 0x00, 0x0F, 0xF0, 0x00,
-        0x00, 0x69, 0x00, 0x00, 0x00, 0x08, 0x00, 0x00,
-        0x0D, 0x20, 0x00, 0x00, 0x01, 0x00, 0x00, 0x01,
-        0xA4, 0x00, 0x00, 0x00, 0x20, 0x00, 0x00, 0x34,
-        0x80, 0x00, 0x00, 0x04, 0x4C, 0x41, 0x4D, 0x45,
-        0x33, 0x2E, 0x31, 0x30, 0x30, 0x00, 0x00, 0x00,
-        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
-    ])
+    audio_file = "static/stream.mp3"
     
-    def generate_audio():
-        # Stream infinito
-        while True:
-            yield mp3_frame
-            time.sleep(0.026)  # 128kbps timing
+    # 1. Crea file MP3 valido se non esiste
+    if not os.path.exists(audio_file) or os.path.getsize(audio_file) < 1000:
+        print("🎵 Creazione file MP3 valido con FFmpeg...")
+        os.makedirs("static", exist_ok=True)
+        
+        # Crea 10 secondi di silenzio MP3 VALIDO
+        cmd = [
+            'ffmpeg',
+            '-f', 'lavfi',
+            '-i', 'anullsrc=r=44100:cl=stereo',
+            '-t', '10',                    # 10 secondi
+            '-c:a', 'libmp3lame',
+            '-b:a', '128k',
+            '-ar', '44100',
+            '-ac', '2',
+            '-y',                          # Sovrascrivi
+            audio_file
+        ]
+        
+        try:
+            result = subprocess.run(cmd, capture_output=True, text=True)
+            if result.returncode == 0:
+                print(f"✅ MP3 creato: {os.path.getsize(audio_file)} bytes")
+            else:
+                print(f"⚠️  FFmpeg errore: {result.stderr[:100]}")
+                # Fallback: copia silence.mp3 se esiste
+                if os.path.exists("static/silence.mp3"):
+                    audio_file = "static/silence.mp3"
+        except Exception as e:
+            print(f"❌ Errore FFmpeg: {e}")
     
-    return Response(
-        generate_audio(),
-        mimetype='audio/mpeg',
-        headers={
-            'Content-Type': 'audio/mpeg',
-            'Cache-Control': 'no-cache, no-store, must-revalidate',
-            'Pragma': 'no-cache',
-            'Expires': '0'
-        }
-    )
+    # 2. Leggi il file MP3
+    try:
+        with open(audio_file, 'rb') as f:
+            mp3_data = f.read()
+        
+        if len(mp3_data) < 100:
+            raise ValueError("File MP3 troppo piccolo")
+        
+        print(f"🎧 Streaming {len(mp3_data)} bytes di MP3")
+        
+        def generate():
+            # Loop infinito del file MP3
+            while True:
+                yield mp3_data
+        
+        return Response(
+            generate(),
+            mimetype='audio/mpeg',
+            headers={
+                'Content-Type': 'audio/mpeg',
+                'Cache-Control': 'no-cache, no-store, must-revalidate',
+                'Pragma': 'no-cache',
+                'Expires': '0'
+            }
+        )
+        
+    except Exception as e:
+        print(f"❌ Errore streaming: {e}")
+        # Fallback ultimo: audio semplice
+        return Response(
+            b'',
+            mimetype='audio/mpeg',
+            status=200
+        )
 
 @app.route('/status')
 def status():
