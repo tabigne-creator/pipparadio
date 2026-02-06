@@ -284,67 +284,50 @@ def home():
 
 @app.route('/radio.mp3')
 def radio_stream():
-    """Stream audio dal tuo file MP3"""
-    from flask import Response
+    """Stream MP3 semplice - NO chunked encoding"""
+    from flask import send_file
     import os
     
-    # Nome del TUO file MP3 (cambia se necessario)
-    your_audio_file = "static/Alberto Camerini - Rock & Roll robot.mp3"  # <-- CAMBIA QUESTO NOME!
+    print("🔊 Richiesta stream MP3 ricevuta")
     
-    # Lista file da provare in ordine
-    audio_files = [
-        your_audio_file,                     # Il tuo file
-        "static/music.mp3",                  # Nomi comuni
-        "static/audio.mp3",
-        "static/stream.mp3",
-        "static/silence.mp3"                 # Fallback
-    ]
+    # File da usare
+    audio_file = "static/silence.mp3"
     
-    # Trova il primo file esistente
-    audio_file = None
-    for file in audio_files:
-        if os.path.exists(file) and os.path.getsize(file) > 1000:
-            audio_file = file
-            print(f"🎵 Usando file audio: {file} ({os.path.getsize(file)} bytes)")
-            break
-    
-    if not audio_file:
-        print("❌ Nessun file audio trovato, creo silenzio...")
-        # Crea file di fallback
-        audio_file = "static/fallback.mp3"
-        import subprocess
-        subprocess.run([
-            'ffmpeg', '-f', 'lavfi', '-i', 'anullsrc=r=44100:cl=stereo',
-            '-t', '30', '-acodec', 'libmp3lame', audio_file
-        ], capture_output=True)
-    
-    # Funzione per generare stream infinito
-    def generate_stream():
-        chunk_size = 8192  # 8KB per chunk
+    # Se il file non esiste, crealo
+    if not os.path.exists(audio_file) or os.path.getsize(audio_file) < 1000:
+        print("📝 Creazione file MP3...")
+        os.makedirs("static", exist_ok=True)
         
-        while True:
-            try:
-                with open(audio_file, 'rb') as f:
-                    while True:
-                        chunk = f.read(chunk_size)
-                        if not chunk:
-                            break  # Fine file, ricomincia
-                        yield chunk
-            except Exception as e:
-                print(f"⚠️  Errore lettura file: {e}")
-                # Fallback a silenzio
-                yield b''
+        # Crea 5 secondi di silenzio MP3 VALIDO
+        import subprocess
+        cmd = [
+            'ffmpeg',
+            '-f', 'lavfi',
+            '-i', 'anullsrc=r=44100:cl=stereo',
+            '-t', '5',
+            '-c:a', 'libmp3lame',
+            '-b:a', '128k',
+            '-ar', '44100',
+            '-ac', '2',
+            '-write_xing', '0',  # Disabilita header Xing (più compatibile)
+            audio_file
+        ]
+        
+        try:
+            subprocess.run(cmd, capture_output=True, check=True)
+            print(f"✅ File creato: {os.path.getsize(audio_file)} bytes")
+        except Exception as e:
+            print(f"❌ Errore FFmpeg: {e}")
+            return "Errore audio", 500
     
-    return Response(
-        generate_stream(),
+    print(f"📤 Invio file: {audio_file} ({os.path.getsize(audio_file)} bytes)")
+    
+    # Usa send_file semplice (NO chunked encoding)
+    return send_file(
+        audio_file,
         mimetype='audio/mpeg',
-        headers={
-            'Content-Type': 'audio/mpeg',
-            'Cache-Control': 'no-cache, no-store, must-revalidate',
-            'Pragma': 'no-cache',
-            'Expires': '0',
-            'Transfer-Encoding': 'chunked'
-        }
+        as_attachment=False,
+        conditional=False  # IMPORTANTE: NO range requests
     )
 @app.route('/status')
 def status():
